@@ -34,13 +34,24 @@
 | 2026-11-14 | 사용자 지적 → 원인 조사(playbook §3.1·§4, reinject-mode.sh 52행) → 인터뷰 3문(범위: 재주입+playbook · 사전 점검 정식화: 넣는다 · 모드: auto) → requirement-spec.md 작성 | 명세 초안 |
 | 2026-11-14 | 사용자 합의 → set-state spec-approved · mode auto. 브랜치 feat/lazymode-self-contained-gate(main f43c4a7). 사용자 요청: 작업 후 push까지 | L1 진입 |
 | 2026-11-14 | 사용자 "수정 이유 문서부터" → 이 log의 '수정 이유' 절을 코드 수정 전에 작성 | 착수 전 기록 |
+| 2026-11-14 | task 01: misc-guards.sh에 rm_07(lazy 줄에 '자기완결'·'파일:줄'·'사전 점검' + 한 줄)·rm_08(auto 줄에 '자기완결' 없음) 추가. tests.lock 재생성 사유: 신규 케이스 2건(258→260) → 현 코드 run.sh **259 passed, 1 failed**(rm_07 reinject-lazy-selfcontained-rule) | red 확인 |
+| 2026-11-14 | task 02: reinject-mode.sh lazy 줄에 "사전 점검(실코드 대조·정답 비노출 힌트, 시도 미산정)" 단계 + "★ 질문·재질문·힌트는 매번 자기완결 — 근거 코드를 파일:줄과 함께 그 메시지에 다시 붙인다(앞서 보였어도)" 추가(한 줄 유지) → run.sh **260 passed, 0 failed** | green |
+| 2026-11-14 | task 03: playbook §1에 자기완결 규칙(모든 게이트 메시지 — 단일 출처) · §3.1 흐름에 ②' 사전 점검 + 브리핑은 §1 참조 · §4 사전 점검 절차 + 패킷에 튜터 공급 표시 · fail 재질문은 §1 참조로 축약. 57줄. 커밋 02fd18a | 구현 완료 |
+| 2026-11-14 | task 04 리뷰 loop1 착수: packet base f43c4a7, `$OUT`=scratchpad/rv.9wX7, mirror=rv.9wX7/mirror.7PHx. 보안 스캔: hooks/tests/cases/git-guard.sh 가짜 토큰 픽스처(ghp_SECRETTOKEN…·ghp_CFGLEAK…)·codex-scan.sh PEM 패턴 문자열 매칭 — 테스트 픽스처·탐지 패턴이라 오탐 판정, 통과. Opus 워커 ∥ codex(medium, read-only) 병렬 | 회수 대기 |
+| 2026-11-14 | loop1 회수: Opus — F1 1건(playbook:41 사전 점검 '새 형태 재질문' 문장이 R4 밖 + 상한 없음 → §1 '무한 차단 없음'과 충돌) + Q 3건 · codex — 미러 모드 `bwrap: loopback: Failed RTM_NEWADDR` 로 파일 미열람(NEXT N1 재발) → 1회 재시도를 인라인 입력(spec+diff+related+변경 파일·lib.sh·src/core.md 전문, 87KB)으로 → F1 'log.md 누락' + open Q 2 | 종합 |
+| 2026-11-14 | ② 종합 → ③ codex 감사(인라인): "log 기각 사유 과도 — 패킷 제외는 결함 아님, 단 존재·기록은 메인이 실파일로 확인해 구분" · "UNSET은 문구 부재가 아니라 출력 전체 비교" → 반영 | 감사 반영 |
+| 2026-11-14 | ④ 수정: playbook:41 문장 삭제 · rm_07에 '다시 붙인다' 단언 · rm_09(UNSET+DEBT=0 → 출력 없음). tests.lock 사유: fix verification test(rm_09 추가·rm_07 보강, 260→261). run.sh **261 passed**. 기준 훅(f43c4a7)으로 바꿔 돌리면 260 passed·rm_07만 실패 → rm_08·rm_09가 기준 동작에서도 통과(auto·UNSET 불변 증명). 커밋 7115858 | loop2로 |
 
 ## 리뷰 ledger (中↑ — 듀얼 리뷰가 돈 작업 필수)
 
-- review packet: base SHA / `$OUT` / mirror 경로
+- review packet loop1: base f43c4a7 / `$OUT`=scratchpad/rv.9wX7 / mirror=rv.9wX7/mirror.7PHx (codex는 인라인 재시도)
 
 | id | first_seen_loop | source | 근거(file:line) | disposition | status | fixed_in_loop |
 |----|-----------------|--------|-----------------|-------------|--------|---------------|
+| L1-01 | 1 | opus | playbooks/implementation-lazymode.md:41 | 채택 | fixed | 1 |
+| L1-02 | 1 | codex | docs/plans/2026-11-14/lazymode-self-contained-gate/log.md (누락) | 범위 밖 — review.md ⓪이 모든 log.md를 패킷에서 의도적으로 제외. 실파일 존재·red/green 기록은 메인이 확인(이 log 타임라인 task 01·02 행) | — | — |
+| L1-03 | 1 | opus+감사 | hooks/tests/cases/misc-guards.sh (UNSET 미검증, R1) | 채택(fix verification test) | fixed | 1 |
+| L1-04 | 1 | codex | hooks/tests/cases/misc-guards.sh:186-195 (지시 문구 단언 약함) | 채택(테스트 보강) | fixed | 1 |
 
 ## 생략한 검증
 
