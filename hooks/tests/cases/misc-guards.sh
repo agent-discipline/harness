@@ -192,7 +192,11 @@ test_rm_07() { # [2026-11-14] MODE=lazy → 자기완결·사전 점검 규칙�
   assert_stdout_match '파일:줄' reinject-lazy-selfcontained-code
   assert_stdout_match '다시 붙인다' reinject-lazy-selfcontained-repaste
   assert_stdout_match '사전 점검' reinject-lazy-precheck
-  [ "$(printf '%s\n' "$HOOK_STDOUT" | grep -c .)" = "1" ] || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 400)"; fail reinject-lazy-single-line; }
+  # 물리적 줄 수 — $(...) 캡처는 끝 개행을 지우므로 파일로 받아 바이트 그대로 센다(빈 줄 추가도 위반)
+  local raw="$SANDBOX/rm07.out"
+  printf '%s' "$(json_prompt '계속')" | env HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/reinject-mode.sh" > "$raw" 2>/dev/null
+  [ "$(wc -l < "$raw")" = "1" ] && [ "$(tail -c1 "$raw" | od -An -c | tr -d ' ')" = '\n' ] \
+    || { echo "  [dbg] lines=$(wc -l < "$raw") bytes=$(wc -c < "$raw")"; fail reinject-lazy-single-line; }
 }
 
 test_rm_08() { # [2026-11-14] MODE=auto → lazy 전용 자기완결 문구 미표시
@@ -207,7 +211,13 @@ test_rm_09() { # [2026-11-14] MODE=UNSET + DEBT=0 → 출력 없음(이번 변�
   write_state UNSET 0 0 0
   run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
   assert_exit 0 reinject-unset-nodebt-exit
-  [ -z "$HOOK_STDOUT" ] || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 240)"; fail reinject-unset-nodebt-empty; }
+  local raw="$SANDBOX/rm09.out"   # 0바이트여야 한다 — $(...) 캡처는 개행만 출력돼도 빈 문자열로 보이므로 파일로 확인
+  printf '%s' "$(json_prompt '계속')" | env HOME="$HOME_DIR" XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/reinject-mode.sh" > "$raw" 2>/dev/null
+  [ ! -s "$raw" ] || { echo "  [dbg] bytes=$(wc -c < "$raw")"; fail reinject-unset-nodebt-empty; }
+  # 상태파일이 실제로 해석됐는지(조용한 조기 종료로 빈 출력이 된 게 아닌지) — 같은 상태에 DEBT=1이면 빚 줄이 나와야 한다
+  write_state UNSET 0 1 0
+  run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+  assert_stdout_match '긴급 빚 미해소' reinject-unset-nodebt-state-resolved
 }
 
 # ── set-state.sh CLI (구 set-mode.sh 후신 — 게이트 상태 기록의 유일 경로)
