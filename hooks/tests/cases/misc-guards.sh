@@ -190,6 +190,7 @@ test_rm_07() { # [2026-11-14] MODE=lazy → 자기완결·사전 점검 규칙�
   assert_stdout_match 'MODE=lazy' reinject-lazy-selfcontained-base
   assert_stdout_match '자기완결' reinject-lazy-selfcontained-rule
   assert_stdout_match '파일:줄' reinject-lazy-selfcontained-code
+  assert_stdout_match '다시 붙인다' reinject-lazy-selfcontained-repaste
   assert_stdout_match '사전 점검' reinject-lazy-precheck
   [ "$(printf '%s\n' "$HOOK_STDOUT" | grep -c .)" = "1" ] || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 400)"; fail reinject-lazy-single-line; }
 }
@@ -200,6 +201,13 @@ test_rm_08() { # [2026-11-14] MODE=auto → lazy 전용 자기완결 문구 미�
   assert_exit 0 reinject-auto-noselfcontained-exit
   assert_stdout_match 'MODE=auto' reinject-auto-noselfcontained-base
   assert_stdout_no_match '자기완결' reinject-auto-noselfcontained-rule
+}
+
+test_rm_09() { # [2026-11-14] MODE=UNSET + DEBT=0 → 출력 없음(이번 변경 전과 동일 — R1 UNSET 불변)
+  write_state UNSET 0 0 0
+  run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+  assert_exit 0 reinject-unset-nodebt-exit
+  [ -z "$HOOK_STDOUT" ] || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 240)"; fail reinject-unset-nodebt-empty; }
 }
 
 # ── set-state.sh CLI (구 set-mode.sh 후신 — 게이트 상태 기록의 유일 경로)
