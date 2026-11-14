@@ -183,6 +183,25 @@ test_rm_06() { # [v4] MODE=UNSET + DEBT=1 → 빚 줄 표시(새 작업 리셋 �
   assert_stdout_match '긴급 빚 미해소' reinject-unset-debt-shown
 }
 
+test_rm_07() { # [2026-11-14] MODE=lazy → 자기완결·사전 점검 규칙이 재주입 줄에(요약 뒤에도 매 턴 보이게), 여전히 한 줄
+  write_state lazy 0 0
+  run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+  assert_exit 0 reinject-lazy-selfcontained-exit
+  assert_stdout_match 'MODE=lazy' reinject-lazy-selfcontained-base
+  assert_stdout_match '자기완결' reinject-lazy-selfcontained-rule
+  assert_stdout_match '파일:줄' reinject-lazy-selfcontained-code
+  assert_stdout_match '사전 점검' reinject-lazy-precheck
+  [ "$(printf '%s\n' "$HOOK_STDOUT" | grep -c .)" = "1" ] || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 400)"; fail reinject-lazy-single-line; }
+}
+
+test_rm_08() { # [2026-11-14] MODE=auto → lazy 전용 자기완결 문구 미표시
+  write_state auto 0 0
+  run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+  assert_exit 0 reinject-auto-noselfcontained-exit
+  assert_stdout_match 'MODE=auto' reinject-auto-noselfcontained-base
+  assert_stdout_no_match '자기완결' reinject-auto-noselfcontained-rule
+}
+
 # ── set-state.sh CLI (구 set-mode.sh 후신 — 게이트 상태 기록의 유일 경로)
 
 test_st_01() { # [v4] mode auto 기록
