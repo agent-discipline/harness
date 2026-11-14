@@ -41,9 +41,12 @@
 | 2026-11-14 | loop1 회수: Opus — F1 1건(playbook:41 사전 점검 '새 형태 재질문' 문장이 R4 밖 + 상한 없음 → §1 '무한 차단 없음'과 충돌) + Q 3건 · codex — 미러 모드 `bwrap: loopback: Failed RTM_NEWADDR` 로 파일 미열람(NEXT N1 재발) → 1회 재시도를 인라인 입력(spec+diff+related+변경 파일·lib.sh·src/core.md 전문, 87KB)으로 → F1 'log.md 누락' + open Q 2 | 종합 |
 | 2026-11-14 | ② 종합 → ③ codex 감사(인라인): "log 기각 사유 과도 — 패킷 제외는 결함 아님, 단 존재·기록은 메인이 실파일로 확인해 구분" · "UNSET은 문구 부재가 아니라 출력 전체 비교" → 반영 | 감사 반영 |
 | 2026-11-14 | ④ 수정: playbook:41 문장 삭제 · rm_07에 '다시 붙인다' 단언 · rm_09(UNSET+DEBT=0 → 출력 없음). tests.lock 사유: fix verification test(rm_09 추가·rm_07 보강, 260→261). run.sh **261 passed**. 기준 훅(f43c4a7)으로 바꿔 돌리면 260 passed·rm_07만 실패 → rm_08·rm_09가 기준 동작에서도 통과(auto·UNSET 불변 증명). 커밋 7115858 | loop2로 |
+| 2026-11-14 | loop2(packet base f43c4a7, `$OUT`=scratchpad/rv2.IOv4, mirror=rv2.IOv4/mirror.M89t; codex는 처음부터 인라인): Opus finding 0 + open Q 3(사전 점검 횟수 상한·§3.2·rm_09 부정 단언) · codex L2-01(rm_07 `grep -c .`는 빈 줄 미계수). ③ 감사: "`wc -l`도 `$(...)` 캡처가 끝 개행을 지워 끝 빈 줄을 못 봄 — stdout을 파일로 받아야" | 종합·감사 |
+| 2026-11-14 | 수정: rm_07·rm_09 출력을 파일로 받아 바이트 그대로 검사(한 줄 = wc -l 1 + 마지막 바이트 개행 / UNSET = 0바이트) + rm_09에 같은 상태 DEBT=1 → 빚 줄 출력(상태 해석 확인). tests.lock 사유: fix verification test 보강(261 유지). run.sh 261 passed. 변이 확인: lazy echo 뒤 빈 줄 → rm_07 FAIL · UNSET이 개행만 출력 → rm_09 FAIL(훅 원복 확인). 커밋 60d1922 | loop3로 |
 
 ## 리뷰 ledger (中↑ — 듀얼 리뷰가 돈 작업 필수)
 
+- review packet loop2: base f43c4a7 / `$OUT`=scratchpad/rv2.IOv4 / mirror=rv2.IOv4/mirror.M89t (codex 인라인)
 - review packet loop1: base f43c4a7 / `$OUT`=scratchpad/rv.9wX7 / mirror=rv.9wX7/mirror.7PHx (codex는 인라인 재시도)
 
 | id | first_seen_loop | source | 근거(file:line) | disposition | status | fixed_in_loop |
@@ -51,6 +54,9 @@
 | L1-01 | 1 | opus | playbooks/implementation-lazymode.md:41 | 채택 | fixed | 1 |
 | L1-02 | 1 | codex | docs/plans/2026-11-14/lazymode-self-contained-gate/log.md (누락) | 범위 밖 — review.md ⓪이 모든 log.md를 패킷에서 의도적으로 제외. 실파일 존재·red/green 기록은 메인이 확인(이 log 타임라인 task 01·02 행) | — | — |
 | L1-03 | 1 | opus+감사 | hooks/tests/cases/misc-guards.sh (UNSET 미검증, R1) | 채택(fix verification test) | fixed | 1 |
+| L2-01 | 2 | codex+감사 | hooks/tests/cases/misc-guards.sh:195 (한 줄 검사가 빈 줄·끝 개행을 못 봄, R2·§4) | 채택 | fixed | 2 |
+| L2-Q1 | 2 | opus | playbooks/implementation-lazymode.md:41 (사전 점검 횟수 상한 없음) | open question — R4 범위 밖, 상한 추가는 승인 범위 변경 → 사용자 결정으로 보고 | — | — |
+| L2-Q3 | 2 | opus | misc-guards.sh rm_09 (부정 단언만) | 채택(테스트 보강) | fixed | 2 |
 | L1-04 | 1 | codex | hooks/tests/cases/misc-guards.sh:186-195 (지시 문구 단언 약함) | 채택(테스트 보강) | fixed | 1 |
 
 ## 생략한 검증
