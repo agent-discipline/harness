@@ -4,7 +4,7 @@
 
 ## 기준
 
-- 마지막 갱신: 2026-11-14 · 직전 완료 작업: `docs/plans/2026-11-14/lazymode-self-contained-gate/`(lazy 게이트 자기완결 재주입 + 사전 점검) · 기준 커밋: 003f119(feat/lazymode-self-contained-gate) · 병합 상태: deploy 완료, push·main 병합 대기
+- 마지막 갱신: 2026-11-17 · 직전 완료 작업: `docs/plans/2026-11-14/lazymode-self-contained-gate/`(lazy 게이트 자기완결 재주입 + 사전 점검) · 기준 커밋: 003f119(feat/lazymode-self-contained-gate) · 병합 상태: main 3282bc9 병합·push·deploy 완료(2026-11-14)
 
 ## 다음 작업 후보 (우선순위순)
 
