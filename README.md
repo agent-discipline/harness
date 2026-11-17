@@ -156,8 +156,8 @@ Opus 메인 × 4방식(혼자·Haiku·Sonnet·Opus 탐색 워커 `explorer`) × 
 ## 설치
 
 ```bash
-git clone https://github.com/junhyeong9812/claude-code-harness.git
-cd claude-code-harness
+git clone https://github.com/agent-discipline/harness.git
+cd harness
 bash hooks/deploy.sh --dry-run   # manifest diff 확인
 bash hooks/deploy.sh             # ~/.claude 로 배포 (백업 + 원자 교체 + smoke, 실패 시 자동 복원)
 bash hooks/tests/run.sh          # 훅 테스트
