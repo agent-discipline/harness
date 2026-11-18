@@ -124,6 +124,7 @@
 | `playbooks/open-source.md` | 외부 OSS 기여·PR |
 | `playbooks/design-taste.md` | 리뷰 설계 렌즈·리팩토링 그룹핑 대화·새 파일 구조/이름 설계 |
 | `playbooks/issue-archive.md` | L1 사이클 마감(검증 완료 후) — CS 이슈 아카이브 |
+| `playbooks/korean-wording.md` | 사람이 읽을 한국어 문서(README·ADR 본문·해설·보고)를 쓰거나 고칠 때 — 지어낸 말·직역·보고서 말투 (작업 원본인 명세서·log·측정 원본은 제외) |
 | `templates/requirement-spec.md` | L1 진입 시 (모든 구현의 진입점) |
 | `templates/log.md` | 〃 (긴급은 log 먼저) |
 | `templates/measurement-log.md` | 측정로그 최초 생성 시 · 12열 로그에 첫 13열 행을 붙일 때 |
@@ -134,3 +135,4 @@
 > v3→v4 (2026-07-21): 모드 5종→auto/lazy+긴급 규칙 · 6칸 게이트→인터뷰→명세서(SPEC 상태 관측) · 문서 4종→spec+log 2파일 · dimensions 폐지 · playbook 12→5 — 근거·리뷰 ledger = `docs/plans/2026-07-21/harness-v4-slimdown/`. 상세 이력 = `HISTORY.md`.
 > v4.2 (2026-09-24): §4 구현 사다리(Ponytail) · 설계 선검증 조건화 · §7 사이클 마감 2단(NEXT.md·issue-archive) — `docs/plans/2026-09-24/ponytail-next-issue-archive/`.
 > v4.3 (2026-11-06): §5 탐색 위임 `explorer`(Sonnet·읽기 전용, 목적 = 컨텍스트 보호) · §0.5 예외(explorer 도구 제한)·§1 L1에 agents/ · §4 이름 권장 1구·§7 워커 토큰(측정 로그 13열)·§8 design-taste 트리거 — 실측(README "실측" 절) · `docs/plans/2026-11-06/harness-v4-3/`(전신 `2026-11-02/agent-search-findings/`).
+> v4.4 (2026-11-18): §8 korean-wording 트리거(한국어 문서의 낱말 — 정본은 rules 저장소 `writing/`) — `docs/plans/2026-11-18/korean-wording-playbook/`.
