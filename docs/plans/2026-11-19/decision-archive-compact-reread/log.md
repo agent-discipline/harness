@@ -203,5 +203,9 @@ fi
 
 ### 아카이브 (issue-archive)
 
-- 아카이브 보류(범위 미확인 — spec ①·task에 study-note 아카이브가 없음, 쓰기 전 사용자 범위 확인 필요). CS 이슈 후보: 세션별 잠금 때문에 같은 파일을 여러 세션이 동시에 써서 손상(H5, 실측) · 기록 중 파일 교체로 유실(L2-3, inode 확인) · 잠금 밖 삭제가 다른 세션의 기록을 지우는 경합(L3-1, 재현) · 머신 부하로 테스트 시간 제한 초과(20:00 행). 카드에 넣지 않을 원 식별자: `capture-decision.sh`·`gate-guard.sh`·`session-mode-guard.sh`·`state-lib.sh`·`harness`·`agent-discipline`. NEXT.md `보류·이월`에 등재함.
+- 사용자 확인(2026-11-20 질문 도구 "지금 아카이브한다") 뒤 study-note 브랜치 `archive/2026-11-20`에 기록(push 전).
+- 아카이브: issue/cross-cutting/concurrency/critical-section-design/ ⓒ 0ea4de52 — 동시 덧붙이기 손상(H5)과 잠금 밖 삭제 경합(L3-1)
+- 아카이브: issue/cross-cutting/reliability/atomic-file-replace/ ⓒ 274df811 — 기록 중 파일 교체(L2-3)
+- 기존 카드 issue/cross-cutting/reliability/lifecycle-signal-contract/ 동일 — 무변경(부하로 테스트 시간 제한 초과)
+- 카드에 넣지 않은 원 식별자: `capture-decision.sh`·`gate-guard.sh`·`session-mode-guard.sh`·`state-lib.sh`·`harness`·`agent-discipline`.
 
