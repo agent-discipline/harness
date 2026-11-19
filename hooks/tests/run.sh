@@ -37,7 +37,7 @@ all_test_ids() {
   done | grep -v '^$' | LC_ALL=C sort
 }
 # 판정 입력 전체를 lock 대상에 포함 — baseline.manifest 무검증 편집 차단 (loop2 L2-A)
-LOCK_TARGETS="cases run.sh lib.sh baseline.manifest"
+LOCK_TARGETS="cases fixtures run.sh lib.sh baseline.manifest"   # 디렉토리는 find 로 재귀 해시
 
 # lock 대상 선검증: 실존 regular file(symlink 불가 — 판정 입력이 lock 밖 내용을 가리키는 것 차단, loop3 L3-02)
 check_lock_targets() {
@@ -46,6 +46,7 @@ check_lock_targets() {
     if [ ! -f "$t" ] || [ -L "$t" ]; then echo "lock 대상 이상: $t (부재 또는 symlink)" >&2; return 1; fi
   done
   [ -d cases ] || { echo "cases/ 부재" >&2; return 1; }
+  { [ -d fixtures ] && [ ! -L fixtures ]; } || { echo "fixtures/ 부재 또는 symlink" >&2; return 1; }
 }
 
 if [ "${1:-}" = "--lock" ]; then

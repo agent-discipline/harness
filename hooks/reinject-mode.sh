@@ -67,9 +67,13 @@ if [ "$DEBT" = "1" ]; then
   echo "[게이트] 긴급 빚 미해소(DEBT=1): 생략한 검증·리뷰·문서 후불 — 해소 전 '작업 완료' 선언 금지, 차기 L1 진입 시 빚 우선. 전항 해소 + 사용자 확인 후 set-state.sh debt-clear. (정본: 작업 폴더 log.md)"
 fi
 
-# 압축 뒤 작업 기록 미독(v4.5 I5①) — 종전 출력 뒤. 판정 불가(rc 1)면 알리지 않는다(I7).
-if UNREAD=$(state_reread_unread "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)") \
-   && [ -n "$UNREAD" ]; then
+# 압축 뒤 작업 기록 미독(v4.5 I5①) — 종전 출력 뒤. 판정 불가(rc 1 — 출력 = 확인할 사이드카 경로)면
+#   판정 불가 한 줄만 낸다(차단은 걸지 않는다 — I7).
+RR_RC=0
+UNREAD=$(state_reread_unread "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)") || RR_RC=$?
+if [ "$RR_RC" != 0 ]; then
+  echo "[게이트] 압축 뒤 재독 상태 판정 불가 — 세션 사이드카 확인: ${UNREAD:-$(dirname -- "$STATE")/$SESSION_ID.compact}"
+elif [ -n "$UNREAD" ]; then
   echo "[게이트] 압축 뒤 작업 기록 미독 — 구현 파일 쓰기 전에 Read:"
   printf '%s\n' "$UNREAD" | sed 's/^/  /'
 fi

@@ -149,8 +149,8 @@ Opus 메인 × 4방식(혼자·Haiku·Sonnet·Opus 탐색 워커 `explorer`) × 
 
 ### 압축 뒤 재독 · 선택 질문 기록 · 고정 지시 (v4.5)
 
-- 압축(SessionStart `source=compact`) 시각을 `.compact`에, 작업 기록을 Read 한 시각을 `.reread`에 남긴다. 압축 뒤 `TASK_PATH`의 `requirement-spec.md`·`log.md`·(있으면) `decisions.md`를 모두 다시 읽기 전까지 gate-guard가 메인의 L1 쓰기를 막고, reinject가 매 턴 읽을 파일을 알린다. 사이드카는 상태 디렉토리 안이라 Edit/Write·Bash 쓰기 패턴으로 직접 고칠 수 없다(기존 상태파일 차단과 같은 범위).
-- 한계: ① `offset`·`limit`이 있는 부분 읽기도 읽은 것으로 본다(전부 읽었는지 훅은 모른다) ② 서브에이전트의 Read는 세지 않는다(메인 맥락이 복구되지 않으므로) ③ 읽었다고 그 내용을 따른다는 보장은 없다 ④ `TASK_PATH`가 없는 세션(작업 폴더를 만들지 않은 세션)에는 재독 강제가 없다 ⑤ 시각은 초 단위라 압축과 같은 초에 일어난 Read는 압축 뒤로 본다 ⑥ `decisions.md`는 docs 아래라 Edit/Write로 고치는 것을 훅이 막지 않는다(손대지 않는 것은 절차 규칙).
+- 압축(SessionStart `source=compact`) 시각을 `.compact`에, 작업 기록을 Read 한 시각을 `.reread`에 남긴다. 압축 뒤 `TASK_PATH`의 `requirement-spec.md`·`log.md`·(있으면) `decisions.md`를 모두 다시 읽기 전까지 gate-guard가 메인의 L1 쓰기를 막고, reinject가 매 턴 읽을 파일을 알린다. 사이드카는 상태 디렉토리 안이라 Edit·Write와 흔한 Bash 쓰기 형태만 막는다. Bash의 다른 방법으로 사이드카를 고치면 차단이 풀린다(훅이 Bash의 뜻을 볼 수 없는 한계 — 상태파일과 같은 종류). 압축 시각은 reread-track이 한 번이라도 돌아 상태 디렉토리에 `.reread-hook-seen` 표시가 있을 때만 기록한다(Read 훅 등록 전에 배포돼도 쓰기가 영구히 막히지 않게).
+- 한계: ① `offset`·`limit`이 있는 부분 읽기도 읽은 것으로 본다(전부 읽었는지 훅은 모른다) ② 서브에이전트의 Read는 세지 않는다(메인 맥락이 복구되지 않으므로) ③ 읽었다고 그 내용을 따른다는 보장은 없다 ④ `TASK_PATH`가 없는 세션(작업 폴더를 만들지 않은 세션)에는 재독 강제가 없다 ⑤ 시각은 초 단위라 압축과 같은 초에 일어난 Read는 압축 뒤로 본다 ⑥ `decisions.md`를 직접 고치는 것은 막지 않는다(절차 규칙) ⑦ 메인이 읽지 않은 채 워커에게 구현을 맡기면 워커의 쓰기는 막히지 않는다 ⑧ 이름이 `requirement-spec.md`·`log.md`·`decisions.md`가 아닌 경로(다른 이름의 심링크 등)로 읽으면 세지 않는다.
 - 고정 지시: `~/.claude/standing-instructions.md`의 줄(`#` 줄·빈 줄 제외)을 `[고정 지시] ` 접두로 매 턴과 세션 시작·압축 직후에 넣는다. 본문 1,500자에서 자른다. 파일이 없으면 종전 출력과 같다.
 
 ## 검증 강도 (stakes 비례 — core §4)

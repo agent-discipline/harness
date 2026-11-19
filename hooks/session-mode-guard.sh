@@ -62,11 +62,22 @@ esac
 # 상호배제가 깨진다(split-lock). lock 은 prune 대상이 아니다.
 # **`.gitignore` 제외**: 자기무시 marker 는 mtime 이 갱신되지 않아 30일 뒤 prune 되면 상태·사이드카가
 # 다시 git 에 노출된다(state_ensure_dir 는 부재 시에만 재생성하므로 복구가 다음 mkdir 까지 지연).
-find "$STATE_DIR" -maxdepth 1 -type f ! -name '*.lock' ! -name '.gitignore' -mtime +30 -delete 2>/dev/null || true
+# **v4.5 제외**: `.reread-hook-seen`(reread-track 등록 표시 — mtime 이 갱신되지 않는다) · 모든 세션의 `*.decisions`
+# (옮겨지지 않은 결정 기록) · **현재 세션**의 `.compact`·`.reread`(압축 뒤 재독 판정 근거). 다른 세션의
+# `.compact`·`.reread` 는 종전 규칙대로 지운다.
+find "$STATE_DIR" -maxdepth 1 -type f ! -name '*.lock' ! -name '.gitignore' ! -name '.reread-hook-seen' \
+  ! -name '*.decisions' ! -name "$SESSION_ID.compact" ! -name "$SESSION_ID.reread" -mtime +30 -delete 2>/dev/null || true
 
 # 압축 시각 기록(v4.5 I3) — source=compact 만. 한 줄 epoch 초, temp+mv(-T: 자리를 디렉토리가 차지하면 그 안으로
 #   옮기지 않고 실패). 실패는 경고만(SessionStart 비차단). 다른 source 는 .compact·.reread 를 건드리지 않는다.
-if [ "$SOURCE" = "compact" ]; then
+#   **reread-track 이 등록돼 한 번이라도 돈 표시(.reread-hook-seen)가 있을 때만** 쓴다 — Read 등록 없이 배포된
+#   상태에서 .compact 만 생기면 .reread 가 영영 안 써져 L1 쓰기가 영구 차단된다(배포 순서 위험). 안내 줄도 같은 조건.
+REREAD_ACTIVE=0
+[ -f "$STATE_DIR/.reread-hook-seen" ] && REREAD_ACTIVE=1
+if [ "$SOURCE" = "compact" ] && [ "$REREAD_ACTIVE" = 0 ]; then
+  echo "[session-mode-guard] 경고: reread-track 표시($STATE_DIR/.reread-hook-seen) 없음 — PostToolUse Read 등록 전으로 보고 압축 시각을 기록하지 않습니다(재독 강제 없음)." >&2
+fi
+if [ "$SOURCE" = "compact" ] && [ "$REREAD_ACTIVE" = 1 ]; then
   _CTMP=$(mktemp "$STATE_DIR/.compact.XXXXXX" 2>/dev/null) || _CTMP=""
   if [ -n "$_CTMP" ] && date +%s > "$_CTMP" 2>/dev/null && mv -fT -- "$_CTMP" "$STATE_DIR/$SESSION_ID.compact" 2>/dev/null; then
     :
@@ -113,7 +124,7 @@ gate-guard 가 SPEC=0 또는 MODE=UNSET 인 L1 쓰기를 차단해 이 순서를
 MSG
 
 # 압축 직후 재독 안내(v4.5) — 종전 출력 바로 뒤, 고정 지시(EXIT trap)보다 앞. 작업 폴더 없는 세션은 출력 없음.
-if [ "$SOURCE" = "compact" ]; then
+if [ "$SOURCE" = "compact" ] && [ "$REREAD_ACTIVE" = 1 ]; then
   TASK_PATH=$(state_get "$STATE" TASK_PATH)
   if [ -n "$TASK_PATH" ]; then
     echo "[게이트] 맥락이 압축됐습니다. 작업 폴더: $TASK_PATH — requirement-spec.md · log.md · decisions.md를 Read 한 뒤 진행하세요."

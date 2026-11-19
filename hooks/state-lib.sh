@@ -353,43 +353,55 @@ state_reread_targets() { # <task_path> → stdout 줄마다 경로
 
 # 미독 대상 — 압축 시각 이상으로 .reread 에 기록되지 않은 **존재하는** 대상 경로를 줄마다 출력.
 #   출력 없음 + rc 0 = 미독 아님(.compact 없음 · TASK_PATH 없음 · 전부 읽음).
-#   rc 1 = 판정 불가(.compact 가 정규 파일이 아님·숫자 아님·비었음, .reread 를 읽을 수 없음) — 호출부는
-#   새 차단·알림을 걸지 않는다(I7). .reread 부재는 판정 불가가 아니라 "아무것도 읽지 않음".
+#   rc 1 = 판정 불가(.compact 가 정규 파일이 아님·숫자 아님·비었음, .reread 가 비정규·읽기 실패) — 이때 stdout 은
+#   **확인할 사이드카 경로 한 줄**이다. 호출부는 새 차단을 걸지 않는다(I7 — reinject 는 판정 불가 알림만).
+#   .reread 부재는 판정 불가가 아니라 "아무것도 읽지 않음". .reread 줄은 **첫 탭**에서만 시각·경로로 나눈다.
 state_reread_unread() { # <state_dir> <sid> <task_path>
-  local dir="${1:-}" sid="${2:-}" tp="${3:-}" c r cts targets f
+  local dir="${1:-}" sid="${2:-}" tp="${3:-}" c r cts targets f out
   [ -n "$sid" ] && [ -n "$tp" ] || return 0
   c="$dir/$sid.compact"; r="$dir/$sid.reread"
   if [ ! -e "$c" ] && [ ! -L "$c" ]; then return 0; fi
-  { [ -f "$c" ] && [ ! -L "$c" ]; } || return 1
-  cts=$(head -n 1 -- "$c" 2>/dev/null) || return 1
-  printf '%s' "$cts" | grep -qE '^[0-9]+(\.[0-9]+)?$' || return 1
-  targets=$(state_reread_targets "$tp") || return 1
+  { [ -f "$c" ] && [ ! -L "$c" ]; } || { printf '%s\n' "$c"; return 1; }
+  cts=$(head -n 1 -- "$c" 2>/dev/null) || { printf '%s\n' "$c"; return 1; }
+  printf '%s' "$cts" | grep -qE '^[0-9]+(\.[0-9]+)?$' || { printf '%s\n' "$c"; return 1; }
+  targets=$(state_reread_targets "$tp") || { printf '%s\n' "$c"; return 1; }
   local -a exist=()
   while IFS= read -r f; do
     [ -n "$f" ] && [ -e "$f" ] && exist+=("$f")   # 존재하지 않는 대상은 읽은 것으로 본다
   done <<< "$targets"
   [ "${#exist[@]}" -gt 0 ] || return 0
   if [ ! -e "$r" ] && [ ! -L "$r" ]; then printf '%s\n' "${exist[@]}"; return 0; fi
-  { [ -f "$r" ] && [ -r "$r" ]; } || return 1
-  # 대상 목록은 ENVIRON 으로 넘긴다(-v 는 역슬래시를 해석해 경로를 바꾼다). 같은 경로가 여러 줄이면 최댓값.
-  _RR_T="$(printf '%s\n' "${exist[@]}")" awk -F'\t' -v c="$cts" '
-    NF == 2 && $1 ~ /^[0-9]+(\.[0-9]+)?$/ { if (!($2 in t) || $1 + 0 > t[$2] + 0) t[$2] = $1 }
-    END { n = split(ENVIRON["_RR_T"], order, "\n")
-          for (i = 1; i <= n; i++) { p = order[i]; if (p != "" && (!(p in t) || t[p] + 0 < c + 0)) print p } }
-  ' "$r" 2>/dev/null || return 1
+  { [ -f "$r" ] && [ ! -L "$r" ] && [ -r "$r" ]; } || { printf '%s\n' "$r"; return 1; }
+  # 대상 목록·압축 시각은 ENVIRON 으로(-v 는 역슬래시를 해석해 경로를 바꾼다). 같은 경로가 여러 줄이면 최댓값.
+  #   awk 는 읽기 실패에도 END 를 돌리므로 출력은 성공했을 때만 내보낸다.
+  out=$(_RR_T="$(printf '%s\n' "${exist[@]}")" _RR_C="$cts" awk '
+    { i = index($0, "\t"); if (i < 2) next
+      ts = substr($0, 1, i - 1); p = substr($0, i + 1)
+      if (ts !~ /^[0-9]+(\.[0-9]+)?$/) next
+      if (!(p in t) || ts + 0 > t[p] + 0) t[p] = ts }
+    END { c = ENVIRON["_RR_C"] + 0; n = split(ENVIRON["_RR_T"], order, "\n")
+          for (i = 1; i <= n; i++) { p = order[i]; if (p != "" && (!(p in t) || t[p] + 0 < c)) print p } }
+  ' "$r" 2>/dev/null) || { printf '%s\n' "$r"; return 1; }
+  [ -z "$out" ] || printf '%s\n' "$out"
 }
 
 # 고정 지시 — $HOME/.claude/standing-instructions.md 의 유효 줄(# 시작·빈 줄 제외)을 줄마다 `[고정 지시] ` 접두로 출력.
 #   본문(접두 제외, 줄바꿈 포함) 1,500자 초과 시 1,500자에서 자르고 마지막 줄 끝에 `…(잘림)`. 글자 수는 jq(코드포인트)
-#   로 센다 — 훅 로케일이 C 여도 한글을 바이트로 세지 않게. 파일 없음·읽기 실패·유효 줄 없음 = 출력 없음(종전과 바이트 동일).
+#   로 센다 — 훅 로케일이 C 여도 한글을 바이트로 세지 않게. 파일은 앞 64KB 까지만 읽는다.
+#   파일 없음·유효 줄 없음 = 출력 없음(종전과 바이트 동일). 심링크·비정규·읽기 불가 = 주입 안 함 + stderr 경고 1줄.
 state_standing_print() {
   local f="${HOME:-}/.claude/standing-instructions.md"
-  [ -n "${HOME:-}" ] && [ -f "$f" ] && [ -r "$f" ] || return 0
-  jq -Rrs '
+  [ -n "${HOME:-}" ] || return 0
+  if [ ! -e "$f" ] && [ ! -L "$f" ]; then return 0; fi
+  if [ -L "$f" ] || [ ! -f "$f" ] || [ ! -r "$f" ]; then
+    echo "[고정 지시] 경고: $f 가 심링크·정규 파일 아님·읽기 불가 — 주입하지 않습니다." >&2
+    return 0
+  fi
+  head -c 65536 -- "$f" 2>/dev/null | jq -Rrs '
     [ split("\n")[] | sub("\r$"; "") | select(test("^\\s*$") | not) | select(startswith("#") | not) ]
     | if length == 0 then empty else
         join("\n") | (if length > 1500 then .[0:1500] + "…(잘림)" else . end)
         | split("\n")[] | "[고정 지시] " + .
       end
-  ' < "$f" 2>/dev/null || true
+  ' 2>/dev/null || true
 }
