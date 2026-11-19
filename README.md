@@ -134,16 +134,24 @@ Opus 메인 × 4방식(혼자·Haiku·Sonnet·Opus 탐색 워커 `explorer`) × 
 │   ├── state-lib.sh           #   상태 SCHEMA=4 (MODE·SPEC·PENDING_GATE·DEBT·TASK_PATH) — flock 원자쓰기·quarantine · 경로 해소(조상 앵커→git 워크트리 루트→cwd) · 자기무시 .gitignore 보장(rc 0/1/2/3)
 │   ├── set-state.sh           #   상태 기록 유일 경로 CLI (mode | spec-approved | emergency | debt-clear | gate-pass)
 │   ├── task-mode-guard.sh     #   새 작업 폴더(spec·log 생성) → SPEC·MODE 리셋 (DEBT 는 유지 — 크로스-태스크 빚)
-│   ├── session-mode-guard.sh  #   SessionStart 상태 시드·복구·quarantine
-│   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT) 재주입 (컨텍스트 요약 후 일관성)
+│   ├── session-mode-guard.sh  #   SessionStart 상태 시드·복구·quarantine · 압축 시각(.compact) 기록 · 고정 지시
+│   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT)·압축 뒤 미독·고정 지시(~/.claude/standing-instructions.md) 재주입
 │   ├── git-guard.sh           #   push 네이티브 승인(ask) 위임 + 커밋/gh 발행 attribution 하드 차단
 │   ├── codex-scan.sh          #   codex 호출 명령의 시크릿 backstop
 │   ├── capture-prompt.sh      #   현재 턴 프롬프트 사이드카(.prompt/.turn — 상태 디렉토리에 기록, 현 소비자 없음·이월)
 │   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(.events — InstructionsLoaded·ConfigChange·SubagentStop)
+│   ├── capture-decision.sh    #   선택 질문(AskUserQuestion)의 질문·선택지·답 → 작업 폴더 decisions.md (작업 폴더 전에는 .decisions 사이드카에 쌓았다 옮김)
+│   ├── reread-track.sh        #   작업 기록(spec·log·decisions.md) Read 시각 → .reread 사이드카 (압축 뒤 재독 판정)
 │   ├── deploy.sh              #   manifest diff → 백업+원자 교체 → stale 최상위 파일 정리 → smoke (실패 시 D9 자동 복원)
 │   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증, 258 tests)
 └── docs/                      # measurement-log + 작업 기록 (L0)
 ```
+
+### 압축 뒤 재독 · 선택 질문 기록 · 고정 지시 (v4.5)
+
+- 압축(SessionStart `source=compact`) 시각을 `.compact`에, 작업 기록을 Read 한 시각을 `.reread`에 남긴다. 압축 뒤 `TASK_PATH`의 `requirement-spec.md`·`log.md`·(있으면) `decisions.md`를 모두 다시 읽기 전까지 gate-guard가 메인의 L1 쓰기를 막고, reinject가 매 턴 읽을 파일을 알린다. 사이드카는 상태 디렉토리 안이라 Edit/Write·Bash 쓰기 패턴으로 직접 고칠 수 없다(기존 상태파일 차단과 같은 범위).
+- 한계: ① `offset`·`limit`이 있는 부분 읽기도 읽은 것으로 본다(전부 읽었는지 훅은 모른다) ② 서브에이전트의 Read는 세지 않는다(메인 맥락이 복구되지 않으므로) ③ 읽었다고 그 내용을 따른다는 보장은 없다 ④ `TASK_PATH`가 없는 세션(작업 폴더를 만들지 않은 세션)에는 재독 강제가 없다 ⑤ 시각은 초 단위라 압축과 같은 초에 일어난 Read는 압축 뒤로 본다 ⑥ `decisions.md`는 docs 아래라 Edit/Write로 고치는 것을 훅이 막지 않는다(손대지 않는 것은 절차 규칙).
+- 고정 지시: `~/.claude/standing-instructions.md`의 줄(`#` 줄·빈 줄 제외)을 `[고정 지시] ` 접두로 매 턴과 세션 시작·압축 직후에 넣는다. 본문 1,500자에서 자른다. 파일이 없으면 종전 출력과 같다.
 
 ## 검증 강도 (stakes 비례 — core §4)
 

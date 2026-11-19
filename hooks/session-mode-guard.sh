@@ -21,6 +21,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   echo "[session-mode-guard] state-lib.sh 로드 실패 — 상태 초기화 생략. 배포 무결성을 확인하세요." >&2
   exit 0
 }
+# 고정 지시(v4.5 I6): 모든 source·모든 종료 경로에서 출력 **끝**에 넣는다(압축 직후에도 다시 들어가게).
+#   파일이 없거나 유효 줄이 없으면 아무것도 출력하지 않는다 — 종전 출력과 바이트 동일.
+trap 'state_standing_print' EXIT
 
 HOOK_INPUT=$(cat)
 
@@ -61,6 +64,18 @@ esac
 # 다시 git 에 노출된다(state_ensure_dir 는 부재 시에만 재생성하므로 복구가 다음 mkdir 까지 지연).
 find "$STATE_DIR" -maxdepth 1 -type f ! -name '*.lock' ! -name '.gitignore' -mtime +30 -delete 2>/dev/null || true
 
+# 압축 시각 기록(v4.5 I3) — source=compact 만. 한 줄 epoch 초, temp+mv(-T: 자리를 디렉토리가 차지하면 그 안으로
+#   옮기지 않고 실패). 실패는 경고만(SessionStart 비차단). 다른 source 는 .compact·.reread 를 건드리지 않는다.
+if [ "$SOURCE" = "compact" ]; then
+  _CTMP=$(mktemp "$STATE_DIR/.compact.XXXXXX" 2>/dev/null) || _CTMP=""
+  if [ -n "$_CTMP" ] && date +%s > "$_CTMP" 2>/dev/null && mv -fT -- "$_CTMP" "$STATE_DIR/$SESSION_ID.compact" 2>/dev/null; then
+    :
+  else
+    [ -n "$_CTMP" ] && rm -f -- "$_CTMP" 2>/dev/null
+    echo "[session-mode-guard] 경고: 압축 시각 기록 실패($STATE_DIR/$SESSION_ID.compact) — 압축 뒤 재독 강제가 걸리지 않습니다." >&2
+  fi
+fi
+
 # 손상 검사(존재 시 quarantine+UNSET 재생성) + 부재-시드. init-if-absent 는 state_ensure_valid 안에서 처리.
 # rc 1 = 판정 불가(flock/재생성) → SessionStart(비차단): 경고 1줄 + 통과(C2). 초기화·모드 주입 생략.
 if ! state_ensure_valid "$STATE"; then
@@ -96,5 +111,13 @@ cat <<MSG
      → set-state.sh emergency (스모크 즉시, 생략분은 log.md '생략한 검증' 빚 — 해소 전 완료 선언 금지)
 gate-guard 가 SPEC=0 또는 MODE=UNSET 인 L1 쓰기를 차단해 이 순서를 강제합니다.
 MSG
+
+# 압축 직후 재독 안내(v4.5) — 종전 출력 바로 뒤, 고정 지시(EXIT trap)보다 앞. 작업 폴더 없는 세션은 출력 없음.
+if [ "$SOURCE" = "compact" ]; then
+  TASK_PATH=$(state_get "$STATE" TASK_PATH)
+  if [ -n "$TASK_PATH" ]; then
+    echo "[게이트] 맥락이 압축됐습니다. 작업 폴더: $TASK_PATH — requirement-spec.md · log.md · decisions.md를 Read 한 뒤 진행하세요."
+  fi
+fi
 
 exit 0

@@ -21,6 +21,7 @@
 #   - MODE=lazy:
 #       · PostToolUse(Edit|Write) → PENDING_GATE=1 (diff 발생 = 게이트 빚짐)
 #       · PreToolUse(Edit|Write)  → PENDING_GATE=1 이면 차단(직전 diff 게이트 먼저) — 통과 시 `set-state.sh gate-pass`
+#   - 압축 뒤 미독(v4.5): 위 판정을 모두 통과한 PreToolUse L1 쓰기(메인만)를 작업 기록 Read 전까지 차단(reread_gate).
 #   - 상태파일(.claude/lazymode/*) Edit/Write/MultiEdit → classify 이전에 **하드 거부(exit 2, MODE 무관)**:
 #       상태는 훅(state-lib)이 flock 원자쓰기로 소유 — Claude가 SPEC/MODE/DEBT 를 직접 써서 게이트를
 #       우회하는 것을 차단. Bash 경로는 훅 bash 쓰기와 구분 불가라 소프트 리마인더만(§0.6 FP).
@@ -339,6 +340,22 @@ MODE=$(state_get "$STATE" MODE)
 SPEC=$(state_get "$STATE" SPEC)
 PENDING=$(state_get "$STATE" PENDING_GATE)
 
+# 압축 뒤 작업 기록 미독 차단(v4.5 I5②) — 종전 차단 사유를 모두 통과한 PreToolUse·메인(agent_id 없음) L1 쓰기만.
+#   미독 = <sid>.compact 가 있고 TASK_PATH 의 대상(spec·log·있으면 decisions)을 그 뒤에 Read 하지 않음(state-lib).
+#   판정 불가(state_reread_unread rc 1)면 새 차단을 걸지 않는다(I7 — 종전 판정만). 통과면 return 0.
+reread_gate() {
+  local unread
+  [ "$EVENT" = "PreToolUse" ] || return 0
+  [ -z "$(echo "$HOOK_INPUT" | jq -r '.agent_id // empty' 2>/dev/null || true)" ] || return 0
+  unread=$(state_reread_unread "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)") || return 0
+  [ -n "$unread" ] || return 0
+  {
+    echo "[gate-guard] 압축 뒤 작업 기록 미독 — 다음 파일을 Read 한 뒤 다시 시도:"
+    printf '%s\n' "$unread" | sed 's/^/  /'
+  } >&2
+  exit 2
+}
+
 # PENDING_GATE 세팅 (state-lib 원자 writer 경유 — flock+temp+mv). 실패 = fail-closed.
 set_pending() {
   if ! state_set "$STATE" PENDING_GATE 1; then
@@ -379,6 +396,7 @@ fi
 
 # 3) auto → 구현 게이트 없음 (명세 합의 후 자율 실행 — 검증·리뷰는 stakes 비례)
 if [ "$MODE" = "auto" ]; then
+  reread_gate
   exit 0
 fi
 
@@ -394,6 +412,7 @@ if [ "$MODE" = "lazy" ]; then
       echo "[gate-guard] 직전 diff의 이해 게이트가 미처리(PENDING_GATE=1)입니다. 먼저 (1) before/after 스니펫 기록 → (2) 사용자 주관식 설명 → (3) 판정 워커 verdict=pass 를 거치고, 통과하면 'bash ~/.claude/hooks/set-state.sh gate-pass .claude/lazymode/$SESSION_ID' 로 내린 뒤 다시 시도하세요. (implementation-lazymode.md §1·§4)" >&2
       exit 2
     fi
+    reread_gate
     exit 0
   fi
 fi

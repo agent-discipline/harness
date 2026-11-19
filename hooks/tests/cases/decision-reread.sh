@@ -98,6 +98,13 @@ dr_standing() { mkdir -p "$HOME_DIR/.claude"; printf '%b' "$1" > "$HOME_DIR/.cla
 dr_lineno() { grep -nF -- "$2" "$1" 2>/dev/null | head -1 | cut -d: -f1; }   # <file> <fixed> → 첫 줄 번호(없으면 빈 값)
 dr_count() { grep -cF -- "$2" "$1" 2>/dev/null || true; }                    # <file> <fixed> → 일치 줄 수
 dr_reread_has() { grep -qF -- "	$1" "$STATE_DIR/$SID.reread" 2>/dev/null; }   # <canonical path>
+# <먼저 와야 할 문구 ERE> <assert-id> — stderr 에 그 문구가 있고, 미독 문구가 있다면 그보다 뒤 (보충 11)
+dr_reason_first() {
+  local f="$SANDBOX/stderr.chk"; printf '%s\n' "$HOOK_STDERR" > "$f"
+  local a b; a=$(grep -nE -- "$1" "$f" | head -1 | cut -d: -f1); b=$(grep -nF '압축 뒤 작업 기록 미독' "$f" | head -1 | cut -d: -f1)
+  [ -n "$a" ] || { echo "  [dbg] stderr=$(head -n 3 "$f" | tr '\n' ' ')"; fail "$2"; }
+  [ -z "$b" ] || [ "$a" -lt "$b" ] || fail "$2-order"
+}
 dr_root_skip() { [ "$(id -u)" = "0" ]; }   # root 는 chmod 를 무시 — 권한 실패 주입 케이스 무의미
 
 # ══ I1/I2 선택 질문 아카이브 (capture-decision.sh) ═════════════════════════════
@@ -134,6 +141,8 @@ test_dr_ad_02() { # [v4.5] 한 호출의 질문 여러 개 → 한 블록(## 1�
   local h1 h2
   h1=$(dr_lineno "$DECF" '### 헤더1'); h2=$(dr_lineno "$DECF" '### 헤더2')
   { [ -n "$h1" ] && [ -n "$h2" ] && [ "$h1" -lt "$h2" ]; } || fail ad02-order
+  [ -z "$(sed -n "$((h2-1))p" "$DECF")" ] || fail ad02-blank-between-questions   # 보충 4
+  [ -n "$(sed -n "$((h2-2))p" "$DECF")" ] || fail ad02-single-blank-between-questions
   grep -qxF -- '- 선택지: x1 / y1' "$DECF" || fail ad02-opts1
   grep -qxF -- '- 선택지: x2 / y2 / z2' "$DECF" || fail ad02-opts2
   grep -qxF -- '- 답: y1' "$DECF" || fail ad02-ans1
@@ -164,13 +173,15 @@ test_dr_ad_05() { # [v4.5] 기존 decisions.md 에는 끝에 덧붙임(append-on
   dr_setup_task
   run_hook capture-decision.sh "$(dr_ask1 toolu_ad05a '질문 하나?' 'H1' 'A안')"
   [ -f "$DECF" ] || fail ad05-first-recorded
-  local before; before=$(cat "$DECF")
+  cp "$DECF" "$SANDBOX/ad05.before"                       # 바이트 그대로 보관(글자 수·바이트 수 혼용 금지)
   run_hook capture-decision.sh "$(dr_ask1 toolu_ad05b '질문 둘?' 'H2' 'C안')"
   assert_exit 0 ad05-exit
-  [ "$(head -c "${#before}" "$DECF")" = "$before" ] || fail ad05-prefix-preserved
+  dr_is_prefix "$SANDBOX/ad05.before" "$DECF" || fail ad05-prefix-preserved
   [ "$(dr_count "$DECF" "$DR_TITLE")" = "1" ] || fail ad05-title-once
   local a b; a=$(dr_lineno "$DECF" '(toolu_ad05a)'); b=$(dr_lineno "$DECF" '(toolu_ad05b)')
   { [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; } || fail ad05-order
+  [ -z "$(sed -n "$((b-1))p" "$DECF")" ] || fail ad05-blank-between-blocks   # 보충 4
+  [ -n "$(sed -n "$((b-2))p" "$DECF")" ] || fail ad05-single-blank-between-blocks
 }
 
 test_dr_ad_06() { # [v4.5] TASK_PATH 없음 → 세션 사이드카 <sid>.decisions 에 쌓임, decisions.md 미생성
@@ -283,6 +294,13 @@ test_dr_ad_12() { # [v4.5 I7] 쓰기 실패(읽기 전용 작업 폴더) → exi
   chmod 755 "$TP"
   assert_exit 0 ad12-exit-0
   [ -n "$HOOK_STDERR" ] || fail ad12-warn
+  assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_ro)' ad12-fallback-sidecar     # 보충 6
+  run_hook capture-decision.sh "$(dr_ask1 toolu_ro2 '복구 뒤?' 'RO' 'B안')"
+  assert_exit 0 ad12-retry-exit
+  local a b; a=$(dr_lineno "$DECF" '(toolu_ro)'); b=$(dr_lineno "$DECF" '(toolu_ro2)')
+  { [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; } || fail ad12-retry-migrated-in-order
+  [ "$(dr_count "$DECF" '(toolu_ro)')" = "1" ] || fail ad12-retry-once
+  [ ! -e "$STATE_DIR/$SID.decisions" ] || fail ad12-retry-sidecar-removed
 }
 
 test_dr_ad_12b() { # [v4.5 I7] 쓰기 실패(decisions.md 읽기 전용) → exit 0 + 기존 내용 보존
@@ -296,6 +314,60 @@ test_dr_ad_12b() { # [v4.5 I7] 쓰기 실패(decisions.md 읽기 전용) → exi
   chmod 644 "$DECF"
   assert_exit 0 ad12b-exit-0
   [ "$(sha256sum < "$DECF")" = "$before" ] || fail ad12b-preserved
+  [ -n "$HOOK_STDERR" ] || fail ad12b-warn
+  assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_r2)' ad12b-fallback-sidecar  # 보충 6
+  run_hook capture-decision.sh "$(dr_ask1 toolu_r3 '셋?' 'R' 'C안')"
+  local a b c; a=$(dr_lineno "$DECF" '(toolu_r1)'); b=$(dr_lineno "$DECF" '(toolu_r2)'); c=$(dr_lineno "$DECF" '(toolu_r3)')
+  { [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ] && [ "$a" -lt "$b" ] && [ "$b" -lt "$c" ]; } || fail ad12b-retry-order
+  [ ! -e "$STATE_DIR/$SID.decisions" ] || fail ad12b-retry-sidecar-removed
+}
+
+test_dr_ad_15() { # [v4.5 보충 3] 중복은 양쪽에서 본다 — 사이드카에 있는 id 를 TASK_PATH 뒤 재호출·이동해도 1회
+  write_state auto
+  local j; j=$(dr_ask1 toolu_both '양쪽?' 'B' 'A안')
+  run_hook capture-decision.sh "$j"
+  [ -f "$STATE_DIR/$SID.decisions" ] || fail ad15-sidecar-precondition
+  TP=$(realpath -m -- "$REPO/docs/plans/2026-11-19/t1"); mkdir -p "$TP"
+  echo s > "$TP/requirement-spec.md"; echo l > "$TP/log.md"; echo "TASK_PATH=$TP" >> "$STATE"
+  run_hook capture-decision.sh "$j"
+  assert_exit 0 ad15-exit
+  [ "$(dr_count "$TP/decisions.md" '(toolu_both)')" = "1" ] || fail ad15-once-after-migrate
+  [ ! -e "$STATE_DIR/$SID.decisions" ] || fail ad15-sidecar-removed
+}
+
+test_dr_ad_15b() { # [v4.5 보충 3] 이동 때 decisions.md 에 이미 있는 블록(같은 id)은 다시 쓰지 않음
+  dr_setup_task
+  printf '%s\n\n## 2026-11-19 00:00:00 (toolu_same)\n\n### 옛\n- 질문: 옛?\n- 선택지: a / b\n- 답: a\n' "$DR_TITLE" > "$DECF"
+  printf '## 2026-11-19 00:00:00 (toolu_same)\n\n### 옛\n- 질문: 옛?\n- 선택지: a / b\n- 답: a\n\n## 2026-11-19 00:00:01 (toolu_only_sc)\n\n### 새\n- 질문: 새?\n- 선택지: a / b\n- 답: b\n' > "$STATE_DIR/$SID.decisions"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_trig '촉발?' 'T' 'A안')"
+  assert_exit 0 ad15b-exit
+  [ "$(dr_count "$DECF" '(toolu_same)')" = "1" ] || fail ad15b-existing-not-rewritten
+  [ "$(dr_count "$DECF" '(toolu_only_sc)')" = "1" ] || fail ad15b-new-migrated
+  [ "$(dr_count "$DECF" '(toolu_trig)')" = "1" ] || fail ad15b-new-record
+  [ ! -e "$STATE_DIR/$SID.decisions" ] || fail ad15b-sidecar-removed
+}
+
+test_dr_ad_16() { # [v4.5 보충 4] 시각은 로컬 시간 (UTC 와 다른 TZ 에서 실행해 구분)
+  dr_setup_task
+  export TZ=Asia/Kathmandu                                   # UTC+05:45 — UTC 로 쓰면 5시간 45분 어긋남
+  local t0; t0=$(dr_now)
+  run_hook capture-decision.sh "$(dr_ask1 toolu_tz '시간대?' 'TZ' 'A안')"
+  assert_exit 0 ad16-exit
+  local ts e; ts=$(sed -n 's/^## \([0-9-]* [0-9:]*\) (toolu_tz)$/\1/p' "$DECF")
+  [ -n "$ts" ] || fail ad16-heading
+  e=$(date -d "$ts" +%s 2>/dev/null || echo 0)
+  { [ "$e" -ge "$((t0-120))" ] && [ "$e" -le "$((t0+120))" ]; } || { echo "  [dbg] ts=$ts e=$e t0=$t0"; fail ad16-local-time; }
+}
+
+test_dr_ad_17() { # [v4.5 보충 5] 답의 줄바꿈 → 공백 · 여러 개 고른 답은 받은 문자열 그대로
+  dr_setup_task
+  run_hook capture-decision.sh "$(dr_ask1 toolu_nl '자유 서술?' 'NL' "$(printf '첫 줄 답\n둘째 줄 답')")"
+  assert_exit 0 ad17-exit
+  grep -qxF -- '- 답: 첫 줄 답 둘째 줄 답' "$DECF" || fail ad17-answer-newline-to-space
+  if grep -qxF '둘째 줄 답' "$DECF"; then fail ad17-no-raw-newline; fi
+  local q; q=$(dr_q '여러 개?' 'MS' 'A안' 'B안' 'C안' | jq -c '.multiSelect=true')
+  run_hook capture-decision.sh "$(dr_ask toolu_ms "[$q]" '{"여러 개?":"A안, C안"}')"
+  grep -qxF -- '- 답: A안, C안' "$DECF" || fail ad17-multiselect-verbatim
 }
 
 test_dr_ad_13() { # [v4.5 I7] 깨진 stdin·session_id 부재 → exit 0, 파일 없음
@@ -351,11 +423,14 @@ test_dr_cp_02() { # [v4.5] startup·resume·clear·fork → .compact 를 만들�
 
 test_dr_cp_03() { # [v4.5] startup·resume 는 기존 .compact 를 건드리지 않음(종전 동작 — 재독 의무 유지)
   local s
-  for s in startup resume; do
+  for s in startup resume clear fork; do                    # 보충 10
     dr_setup_task
     dr_compact_at 1000
+    printf '%s\t%s\n' 1001 "$SPECF" > "$STATE_DIR/$SID.reread"
+    cp "$STATE_DIR/$SID.reread" "$SANDBOX/rr.before"
     run_hook session-mode-guard.sh "$(dr_ss "$s")"
     [ "$(cat "$STATE_DIR/$SID.compact")" = "1000" ] || fail "cp03-kept-$s"
+    cmp -s "$SANDBOX/rr.before" "$STATE_DIR/$SID.reread" || fail "cp03-reread-kept-$s"
   done
 }
 
@@ -379,6 +454,9 @@ test_dr_cp_05() { # [v4.5] compact + TASK_PATH → 종전 안내문 + 재독 안
   dr_setup_task; rm -f "$STATE_DIR/$SID.compact"
   dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss compact)" "$SANDBOX/new"
   dr_is_prefix "$SANDBOX/old" "$SANDBOX/new" || fail cp05-legacy-kept
+  tail -c +"$(( $(wc -c < "$SANDBOX/old") + 1 ))" "$SANDBOX/new" | head -n 1 > "$SANDBOX/after"   # 보충 12
+  grep -qxF "[게이트] 맥락이 압축됐습니다. 작업 폴더: $TP — requirement-spec.md · log.md · decisions.md를 Read 한 뒤 진행하세요." "$SANDBOX/after" \
+    || fail cp05-guidance-right-after-legacy
   grep -qxF "[게이트] 맥락이 압축됐습니다. 작업 폴더: $TP — requirement-spec.md · log.md · decisions.md를 Read 한 뒤 진행하세요." "$SANDBOX/new" \
     || { echo "  [dbg] new-tail=$(tail -n 2 "$SANDBOX/new" | tr '\n' ' ')"; fail cp05-guidance-line; }
 }
@@ -469,6 +547,19 @@ test_dr_rr_07() { # [v4.5] '이상' 경계: 읽은 시각 == 압축 시각 → �
   printf '%s\t%s\n%s\t%s\n' "$c" "$SPECF" "$c" "$LOGF" > "$STATE_DIR/$SID.reread"
   dr_l1
   assert_exit 0 rr07-equal-is-read
+}
+
+test_dr_rr_07b() { # [v4.5 보충 8] 읽는 쪽은 소수 초 표기도 받아들여 수로 비교 (같은 값 = 읽음)
+  dr_setup_task
+  local c; c=$(( $(dr_now) - 100 ))
+  printf '%s.500000000\n' "$c" > "$STATE_DIR/$SID.compact"
+  printf '%s.200000000\t%s\n%s.900000000\t%s\n' "$c" "$SPECF" "$c" "$LOGF" > "$STATE_DIR/$SID.reread"
+  dr_l1; assert_exit 2 rr07b-fraction-before-unread
+  printf '%s.500000000\t%s\n%s\t%s\n' "$c" "$SPECF" "$((c+1))" "$LOGF" > "$STATE_DIR/$SID.reread"
+  dr_l1; assert_exit 0 rr07b-fraction-equal-and-int-read
+  printf '%s\n' "$c" > "$STATE_DIR/$SID.compact"
+  printf '%s.000000000\t%s\n%s\t%s\n' "$c" "$SPECF" "$c" "$LOGF" > "$STATE_DIR/$SID.reread"
+  dr_l1; assert_exit 0 rr07b-int-compact-vs-fraction-equal
 }
 
 test_dr_rr_08() { # [v4.5] 재압축 → 다시 미독 (session-mode-guard compact 가 .compact 갱신)
@@ -572,7 +663,7 @@ test_dr_bl_01() { # [v4.5] 미독 + L1 Write → exit 2, 계약 문구로 시작
   dr_l1 Write
   assert_exit 2 bl01-exit
   printf '%s\n' "$HOOK_STDERR" | grep -q '^\[gate-guard\] 압축 뒤 작업 기록 미독 — 다음 파일을 Read 한 뒤 다시 시도:' \
-    || { echo "  [dbg] stderr=$(printf '%s' "$HOOK_STDERR" | head -c 300)"; fail bl01-message-prefix; }
+    || { echo "  [dbg] stderr=$(printf '%s' "$HOOK_STDERR" | head -n 3 | tr '\n' ' ')"; fail bl01-message-prefix; }
   local p q
   for p in "$SPECF" "$LOGF" "$DECF"; do
     printf '%s\n' "$HOOK_STDERR" | grep -qF -- "$p" || fail bl01-path-listed
@@ -628,13 +719,11 @@ test_dr_bl_07() { # [v4.5 I8] 종전 SPEC/MODE 차단이 먼저 — 그 문구 �
   dr_setup_task UNSET 0 0 0; dr_compact_at $(( $(dr_now) - 100 ))
   dr_l1
   assert_exit 2 bl07-spec0-exit
-  assert_stderr_match '요구사항 명세 미합의\(SPEC=0\)' bl07-spec0-msg
-  assert_stderr_no_match '압축 뒤 작업 기록 미독' bl07-spec0-first
+  dr_reason_first '요구사항 명세 미합의\(SPEC=0\)' bl07-spec0-first
   dr_setup_task UNSET 0 0 1; dr_compact_at $(( $(dr_now) - 100 ))
   dr_l1
   assert_exit 2 bl07-unset-exit
-  assert_stderr_match '자율성 미선택\(MODE=UNSET\)' bl07-unset-msg
-  assert_stderr_no_match '압축 뒤 작업 기록 미독' bl07-unset-first
+  dr_reason_first '자율성 미선택\(MODE=UNSET\)' bl07-unset-first
 }
 
 test_dr_bl_08() { # [v4.5 I7] 사이드카가 깨져 판정 불가 → 새 차단 없음(종전 판정만: auto → 통과)
@@ -645,7 +734,10 @@ test_dr_bl_08() { # [v4.5 I7] 사이드카가 깨져 판정 불가 → 새 차�
   rm -f "$STATE_DIR/$SID.compact"; mkdir "$STATE_DIR/$SID.compact"
   dr_l1
   assert_exit 0 bl08-dir-compact-pass
-  rmdir "$STATE_DIR/$SID.compact"; dr_compact_at $(( $(dr_now) - 100 ))
+  rmdir "$STATE_DIR/$SID.compact"; : > "$STATE_DIR/$SID.compact"   # 보충 7: 빈 파일
+  dr_l1
+  assert_exit 0 bl08-empty-compact-pass
+  dr_compact_at $(( $(dr_now) - 100 ))
   dr_l1; assert_exit 2 bl08-control-valid-compact
 }
 
@@ -658,6 +750,27 @@ test_dr_bl_08b() { # [v4.5 I7] .reread 읽기 실패(권한) → 판정 불가 �
   chmod 644 "$STATE_DIR/$SID.reread"
   assert_exit 0 bl08b-unreadable-reread-pass
   dr_l1; assert_exit 2 bl08b-control-readable-unread
+}
+
+test_dr_bl_08c() { # [v4.5 보충 7] 판정 불가(.compact 숫자 아님·빔·디렉토리 / .reread 읽기 불가) → reinject 미독 알림도 없음
+  dr_setup_task
+  local v c="$STATE_DIR/$SID.compact"
+  for v in garbage empty dir; do
+    if [ -d "$c" ]; then rmdir "$c"; fi
+    case "$v" in garbage) printf 'abc\n' > "$c" ;; empty) : > "$c" ;; dir) rm -f "$c"; mkdir "$c" ;; esac
+    run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+    assert_exit 0 "bl08c-exit-$v"
+    assert_stdout_no_match '압축 뒤 작업 기록 미독' "bl08c-no-notice-$v"
+  done
+  rmdir "$c"; dr_compact_at $(( $(dr_now) - 100 ))
+  if ! dr_root_skip; then
+    printf '%s\t%s\n' 1 "$SPECF" > "$STATE_DIR/$SID.reread"; chmod 000 "$STATE_DIR/$SID.reread"
+    run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+    chmod 644 "$STATE_DIR/$SID.reread"
+    assert_stdout_no_match '압축 뒤 작업 기록 미독' bl08c-no-notice-unreadable-reread
+  fi
+  run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
+  assert_stdout_match '압축 뒤 작업 기록 미독' bl08c-control-notice
 }
 
 test_dr_bl_09() { # [v4.5] 차단 → 재독 → 같은 쓰기 통과 (exit 2 가 미독 때문이었음을 확인)
@@ -683,6 +796,18 @@ test_dr_bl_11() { # [v4.5] lazy(PENDING_GATE=0) 에서도 미독이면 차단
   dr_l1
   assert_exit 2 bl11-lazy-blocked
   assert_stderr_match '압축 뒤 작업 기록 미독' bl11-lazy-msg
+}
+
+test_dr_bl_11b() { # [v4.5 보충 11] lazy PENDING_GATE=1 + 미독 → PENDING 문구가 먼저 · PostToolUse 동작은 종전 그대로
+  dr_setup_task lazy 1 0 1; dr_compact_at $(( $(dr_now) - 100 ))
+  dr_l1
+  assert_exit 2 bl11b-pending-exit
+  dr_reason_first '이해 게이트가 미처리\(PENDING_GATE=1\)' bl11b-pending-first
+  dr_setup_task lazy 0 0 1; dr_compact_at $(( $(dr_now) - 100 ))
+  run_hook gate-guard.sh "$(dr_tool PostToolUse Edit "$REPO/src/app.sh")"
+  assert_exit 0 bl11b-post-exit
+  assert_state PENDING_GATE 1 bl11b-post-pending-set
+  assert_stderr_no_match '압축 뒤 작업 기록 미독' bl11b-post-no-unread-msg
 }
 
 test_dr_ri_01() { # [v4.5] reinject: 미독 → 종전 출력 뒤에 미독 줄 + 읽지 않은 경로
@@ -740,6 +865,8 @@ test_dr_si_01() { # [v4.5] reinject: 파일 있음 → 종전 출력 뒤 끝에 
   assert_file_contains "$SANDBOX/new" '항상 한국어로 답한다' si01-line1
   assert_file_contains "$SANDBOX/new" '커밋 메시지는 영어로 쓴다' si01-line2
   assert_file_not_contains "$SANDBOX/new" '주석' si01-no-comment
+  grep -qxF '[고정 지시] 항상 한국어로 답한다' "$SANDBOX/new" || fail si01-per-line-prefix-1   # 보충 1
+  grep -qxF '[고정 지시] 커밋 메시지는 영어로 쓴다' "$SANDBOX/new" || fail si01-per-line-prefix-2
   local a b; a=$(dr_lineno "$SANDBOX/new" '항상 한국어로 답한다'); b=$(dr_lineno "$SANDBOX/new" '커밋 메시지는 영어로 쓴다')
   [ "$a" -le "$b" ] || fail si01-line-order
   # 출력 끝: 마지막 비어 있지 않은 줄에 마지막 지시가 있다
@@ -784,30 +911,79 @@ test_dr_si_04() { # [v4.5] session-mode-guard compact + TASK_PATH: 재독 안내
   { [ -n "$g" ] && [ -n "$s" ] && [ "$g" -lt "$s" ]; } || { echo "  [dbg] g=$g s=$s"; fail si04-standing-last; }
 }
 
-test_dr_si_05() { # [v4.5] 1,500자 초과 → 잘라 넣고 '…(잘림)' (reinject·session 둘 다)
-  local long; long=$(printf '가%.0s' $(seq 1 2000))
+# 고정 지시 출력에서 종전 출력(접두)을 뺀 나머지만 <out>.rest 로 — 글자 세기는 여기서만(종전 안내문 글자 오염 방지)
+dr_rest_after_legacy() { # <legacy-out> <new-out>
+  dr_is_prefix "$1" "$2" || return 1
+  tail -c +"$(( $(wc -c < "$1") + 1 ))" "$2" > "$2.rest"
+}
+dr_si_run_pair() { # <hook> <outbase> — 종전(고정 지시 없음)·새 훅(고정 지시 있음) 출력. 상태는 auto 로 재설정
+  local h=$1 o=$2 j
+  if [ "$h" = reinject-mode.sh ]; then j=$(json_prompt '계속'); else j=$(dr_ss startup); fi
+  write_state auto; dr_raw "$LEG/$h" "$j" "$o.old"
+  write_state auto; dr_raw "$HOOKS_DIR/$h" "$j" "$o.new"
+}
+dr_ccount() { LC_ALL=C grep -o "$2" "$1" 2>/dev/null | wc -l; }   # <file> <글자> → 등장 횟수(바이트열 일치)
+
+test_dr_si_05() { # [v4.5 보충 2] 1,500자 초과 → 1,500자로 자르고 마지막 줄 끝에 '…(잘림)' (reinject·session 둘 다)
+  dr_legacy_init
+  local long; long=$(printf '꿻%.0s' $(seq 1 2000))
   dr_standing "$long\n"
-  write_state auto
-  local h out n
+  local h o
   for h in reinject-mode.sh session-mode-guard.sh; do
-    out="$SANDBOX/trunc.$h"
-    if [ "$h" = reinject-mode.sh ]; then dr_raw "$HOOKS_DIR/$h" "$(json_prompt '계속')" "$out"
-    else dr_raw "$HOOKS_DIR/$h" "$(dr_ss startup)" "$out"; fi
-    assert_file_contains "$out" '…(잘림)' "si05-marker-$h"
-    if LC_ALL=C grep -qE '(가){1501}' "$out"; then fail "si05-cut-$h"; fi
-    LC_ALL=C grep -qE '(가){1400}' "$out" || fail "si05-kept-$h"
-    n=$(LC_ALL=C grep -o '가' "$out" | wc -l)
-    [ "$n" -le 1500 ] || { echo "  [dbg] n=$n"; fail "si05-total-le-1500-$h"; }
+    o="$SANDBOX/trunc.$h"; dr_si_run_pair "$h" "$o"
+    [ "$(dr_ccount "$o.old" '꿻')" = "0" ] || fail "si05-fixture-absent-in-legacy-$h"
+    dr_rest_after_legacy "$o.old" "$o.new" || fail "si05-legacy-prefix-$h"
+    assert_file_contains "$o.new.rest" '…(잘림)' "si05-marker-$h"
+    [ "$(dr_ccount "$o.new.rest" '꿻')" = "1500" ] || { echo "  [dbg] n=$(dr_ccount "$o.new.rest" '꿻')"; fail "si05-exactly-1500-$h"; }
+    [ "$(grep -v '^[[:space:]]*$' "$o.new.rest" | tail -1 | grep -c '…(잘림)$' || true)" = "1" ] || fail "si05-marker-at-last-line-end-$h"
+    grep -q '^\[고정 지시\] 꿻' "$o.new.rest" || fail "si05-prefixed-$h"
   done
 }
 
+test_dr_si_05b() { # [v4.5 보충 2] 경계: 정확히 1,500자는 자르지 않고 1,501자는 자름 (한 줄)
+  dr_legacy_init
+  local h o n
+  for n in 1500 1501; do
+    dr_standing "$(printf '꿻%.0s' $(seq 1 "$n"))\n"
+    for h in reinject-mode.sh session-mode-guard.sh; do
+      o="$SANDBOX/b$n.$h"; dr_si_run_pair "$h" "$o"
+      dr_rest_after_legacy "$o.old" "$o.new" || fail "si05b-legacy-prefix-$n-$h"
+      if [ "$n" = 1500 ]; then
+        assert_file_not_contains "$o.new.rest" '…(잘림)' "si05b-1500-not-cut-$h"
+        [ "$(dr_ccount "$o.new.rest" '꿻')" = "1500" ] || fail "si05b-1500-full-$h"
+      else
+        assert_file_contains "$o.new.rest" '…(잘림)' "si05b-1501-cut-$h"
+        [ "$(dr_ccount "$o.new.rest" '꿻')" = "1500" ] || fail "si05b-1501-to-1500-$h"
+      fi
+    done
+  done
+}
+
+test_dr_si_05c() { # [v4.5 보충 2] 여러 줄: 줄 사이 줄바꿈도 센다 (749+1+750=1,500 그대로 / 750+1+750=1,501 자름)
+  dr_legacy_init
+  local o a b
+  a=$(printf '꿻%.0s' $(seq 1 749)); b=$(printf '뷁%.0s' $(seq 1 750))
+  dr_standing "$a\n$b\n"
+  o="$SANDBOX/ml1500"; dr_si_run_pair reinject-mode.sh "$o"
+  dr_rest_after_legacy "$o.old" "$o.new" || fail si05c-legacy-prefix-1500
+  assert_file_not_contains "$o.new.rest" '…(잘림)' si05c-1500-not-cut
+  [ "$(dr_ccount "$o.new.rest" '뷁')" = "750" ] || fail si05c-1500-second-line-full
+  a=$(printf '꿻%.0s' $(seq 1 750))
+  dr_standing "$a\n$b\n"
+  o="$SANDBOX/ml1501"; dr_si_run_pair reinject-mode.sh "$o"
+  dr_rest_after_legacy "$o.old" "$o.new" || fail si05c-legacy-prefix-1501
+  assert_file_contains "$o.new.rest" '…(잘림)' si05c-1501-cut
+  [ "$(dr_ccount "$o.new.rest" '뷁')" = "749" ] || { echo "  [dbg] n=$(dr_ccount "$o.new.rest" '뷁')"; fail si05c-1501-second-line-749; }
+  grep -qxF "[고정 지시] $a" "$o.new.rest" || fail si05c-first-line-intact
+}
+
 test_dr_si_06() { # [v4.5] 상한 미만(1,000자) → 자르지 않음
-  local mid; mid=$(printf '나%.0s' $(seq 1 1000))
-  dr_standing "$mid\n"
-  write_state auto
-  dr_raw "$HOOKS_DIR/reinject-mode.sh" "$(json_prompt '계속')" "$SANDBOX/o"
-  assert_file_not_contains "$SANDBOX/o" '…(잘림)' si06-no-marker
-  LC_ALL=C grep -qE '(나){1000}' "$SANDBOX/o" || fail si06-full
+  dr_legacy_init
+  dr_standing "$(printf '꿻%.0s' $(seq 1 1000))\n"
+  local o="$SANDBOX/s06"; dr_si_run_pair reinject-mode.sh "$o"
+  dr_rest_after_legacy "$o.old" "$o.new" || fail si06-legacy-prefix
+  assert_file_not_contains "$o.new.rest" '…(잘림)' si06-no-marker
+  [ "$(dr_ccount "$o.new.rest" '꿻')" = "1000" ] || fail si06-full
 }
 
 test_dr_si_07() { # [v4.5] 파일 없음 / 빈 파일 / 주석·빈 줄뿐 → reinject 출력이 종전 훅과 바이트 동일 (여러 상태)

@@ -337,3 +337,59 @@ state_ensure_valid() {
     *)  return 1 ;;                                # E 또는 예상 밖 → 판정 불가
   esac
 }
+
+# ── v4.5 압축 뒤 재독 · 고정 지시 (decision-archive-compact-reread §10) ─────────────────
+# 사이드카(상태 디렉토리, 상태파일 SCHEMA·키와 별개): <sid>.compact = 압축 시각 한 줄(epoch) — session-mode-guard 가 씀.
+#   <sid>.reread = 줄마다 `<epoch>\t<canonical 경로>` — reread-track 이 씀. 시각 비교는 수(awk) — 소수 초도 읽는다.
+
+# 재독 대상(canonical) — spec · log · decisions 순. 존재 여부는 보지 않는다(판정은 state_reread_unread).
+state_reread_targets() { # <task_path> → stdout 줄마다 경로
+  local tp="${1:-}" f
+  [ -n "$tp" ] || return 0
+  for f in requirement-spec.md log.md decisions.md; do
+    realpath -m -- "$tp/$f" 2>/dev/null || return 1
+  done
+}
+
+# 미독 대상 — 압축 시각 이상으로 .reread 에 기록되지 않은 **존재하는** 대상 경로를 줄마다 출력.
+#   출력 없음 + rc 0 = 미독 아님(.compact 없음 · TASK_PATH 없음 · 전부 읽음).
+#   rc 1 = 판정 불가(.compact 가 정규 파일이 아님·숫자 아님·비었음, .reread 를 읽을 수 없음) — 호출부는
+#   새 차단·알림을 걸지 않는다(I7). .reread 부재는 판정 불가가 아니라 "아무것도 읽지 않음".
+state_reread_unread() { # <state_dir> <sid> <task_path>
+  local dir="${1:-}" sid="${2:-}" tp="${3:-}" c r cts targets f
+  [ -n "$sid" ] && [ -n "$tp" ] || return 0
+  c="$dir/$sid.compact"; r="$dir/$sid.reread"
+  if [ ! -e "$c" ] && [ ! -L "$c" ]; then return 0; fi
+  { [ -f "$c" ] && [ ! -L "$c" ]; } || return 1
+  cts=$(head -n 1 -- "$c" 2>/dev/null) || return 1
+  printf '%s' "$cts" | grep -qE '^[0-9]+(\.[0-9]+)?$' || return 1
+  targets=$(state_reread_targets "$tp") || return 1
+  local -a exist=()
+  while IFS= read -r f; do
+    [ -n "$f" ] && [ -e "$f" ] && exist+=("$f")   # 존재하지 않는 대상은 읽은 것으로 본다
+  done <<< "$targets"
+  [ "${#exist[@]}" -gt 0 ] || return 0
+  if [ ! -e "$r" ] && [ ! -L "$r" ]; then printf '%s\n' "${exist[@]}"; return 0; fi
+  { [ -f "$r" ] && [ -r "$r" ]; } || return 1
+  # 대상 목록은 ENVIRON 으로 넘긴다(-v 는 역슬래시를 해석해 경로를 바꾼다). 같은 경로가 여러 줄이면 최댓값.
+  _RR_T="$(printf '%s\n' "${exist[@]}")" awk -F'\t' -v c="$cts" '
+    NF == 2 && $1 ~ /^[0-9]+(\.[0-9]+)?$/ { if (!($2 in t) || $1 + 0 > t[$2] + 0) t[$2] = $1 }
+    END { n = split(ENVIRON["_RR_T"], order, "\n")
+          for (i = 1; i <= n; i++) { p = order[i]; if (p != "" && (!(p in t) || t[p] + 0 < c + 0)) print p } }
+  ' "$r" 2>/dev/null || return 1
+}
+
+# 고정 지시 — $HOME/.claude/standing-instructions.md 의 유효 줄(# 시작·빈 줄 제외)을 줄마다 `[고정 지시] ` 접두로 출력.
+#   본문(접두 제외, 줄바꿈 포함) 1,500자 초과 시 1,500자에서 자르고 마지막 줄 끝에 `…(잘림)`. 글자 수는 jq(코드포인트)
+#   로 센다 — 훅 로케일이 C 여도 한글을 바이트로 세지 않게. 파일 없음·읽기 실패·유효 줄 없음 = 출력 없음(종전과 바이트 동일).
+state_standing_print() {
+  local f="${HOME:-}/.claude/standing-instructions.md"
+  [ -n "${HOME:-}" ] && [ -f "$f" ] && [ -r "$f" ] || return 0
+  jq -Rrs '
+    [ split("\n")[] | sub("\r$"; "") | select(test("^\\s*$") | not) | select(startswith("#") | not) ]
+    | if length == 0 then empty else
+        join("\n") | (if length > 1500 then .[0:1500] + "…(잘림)" else . end)
+        | split("\n")[] | "[고정 지시] " + .
+      end
+  ' < "$f" 2>/dev/null || true
+}

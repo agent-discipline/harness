@@ -105,12 +105,14 @@
 - **외부 발행(훅 강제는 push ask·발행 본문 attribution 차단뿐 — 나머지 절차 규칙)**: 이슈·MR/PR 생성·원격 브랜치 생성은 **각각 사용자 확인**(추측 발행 금지). 브랜치 base·이름, MR/PR target·draft도 확인. **브랜치 우선** — main 직접 작업 금지. 커밋 정리는 의미 단위, push된 커밋 rebase 금지.
 - **불가역(git 밖 포함)**: DB 변경 실행·마이그레이션·대량 삭제·원본 덮어쓰기 = 개별 사용자 확인 후. **파괴적 조작 직전 현재 브랜치·HEAD·경로·대상 재확인**(실측: 상태 오인이 최고 강도 사고 유형).
 - **배포**: 하네스 배포는 deploy.sh 경유만(manifest diff → 백업+원자 교체 → 신규 세션 smoke). **D9 예외**: 배포 직후 smoke 실패 한정, 직전 백업 즉시 복원은 승인 없이 실행 + 사후 보고.
-- **활성 훅**(배포 단일 출처 = 이 repo): `git-guard`(push ask·커밋/gh 발행 attribution 차단) · `codex-scan`(시크릿 backstop) · `gate-guard`(C1·C2·SPEC/MODE 게이트) · `session-mode-guard` · `reinject-mode`·`capture-prompt` · `task-mode-guard`(spec|log 리셋) · `detect-layer`(관측 전용 — InstructionsLoaded·ConfigChange·SubagentStop → 세션 `.events` 사이드카, 차단 없음). 테스트: `hooks/tests/run.sh`.
+- **활성 훅**(배포 단일 출처 = 이 repo): `git-guard`(push ask·커밋/gh 발행 attribution 차단) · `codex-scan`(시크릿 backstop) · `gate-guard`(C1·C2·SPEC/MODE 게이트) · `session-mode-guard` · `reinject-mode`·`capture-prompt` · `task-mode-guard`(spec|log 리셋) · `detect-layer`(관측 전용 — InstructionsLoaded·ConfigChange·SubagentStop → 세션 `.events` 사이드카, 차단 없음) · `capture-decision`(선택 질문·답 → 작업 폴더 `decisions.md`) · `reread-track`(압축 뒤 작업 기록 Read 시각). 테스트: `hooks/tests/run.sh`.
 
 ## 7. 문서·기록
 
-- 작업 폴더 `docs/plans/YYYY-MM-DD/작업명/` = **requirement-spec.md + log.md** 2파일(`templates/`). log는 발생 시점 append(`시각|사건|결과` — 사후 재구성 금지) + 리뷰 ledger + 생략한 검증(빚 정본) + 완료 요약.
-- **저장 위치 = 변경된 프로젝트**(cwd 아님). 상위 repo에는 roll-up 1줄만. 대상이 docs를 gitignore하면 로컬-only 기록으로 인정. **세션 재개** = 최신 작업 폴더의 spec 승인 상태 + log 마지막 행 + `docs/plans/NEXT.md`부터.
+- 작업 폴더 `docs/plans/YYYY-MM-DD/작업명/` = **requirement-spec.md + log.md** 2파일(`templates/`) + 훅이 덧붙이는 `decisions.md`(선택 질문·답 — 손대지 않는다). log는 발생 시점 append(`시각|사건|결과` — 사후 재구성 금지) + 리뷰 ledger + 생략한 검증(빚 정본) + 완료 요약.
+- **저장 위치 = 변경된 프로젝트**(cwd 아님). 상위 repo에는 roll-up 1줄만. 대상이 docs를 gitignore하면 로컬-only 기록으로 인정. **세션 재개** = 최신 작업 폴더의 spec 승인 상태 + log 마지막 행 + `decisions.md` + `docs/plans/NEXT.md`부터.
+- **압축 뒤 재독**: 맥락이 압축되면 작업 폴더의 spec·log·decisions.md를 메인이 Read 한 뒤 진행한다(그 전까지 gate-guard가 L1 쓰기를 막는다).
+- **고정 지시(절차 규칙)**: 대화에서 나온 계속 지켜야 하는 행동 지시(응답 언어 등)는 사용자 확인 뒤 `~/.claude/standing-instructions.md`에 올린다 — 매 턴 재주입된다.
 - 종료 시: `docs/measurement-log.md` 1행(<1분, 워커 모델·토큰 합 포함 — 완료 알림 usage) + **완료 요약**(핵심 diff before/after 스니펫 — **실파일에서 복사**, 메모리 재현·placeholder 금지, 조사·작성은 Opus 워커 위임).
 - **사이클 마감 2단 (검증 완료 *후* — '검증 완료' = §4 안전선+stakes 리뷰. 병합·push 전 작업 브랜치의 docs 커밋으로, 병합이 통제 밖이어도 이 시점. 병합 뒤 검증(배포 smoke 등) 결과는 후속 docs 브랜치 커밋→병합으로 NEXT에 반영 · 긴급은 DEBT=0 후 · 사전 예측 대신 사후 전망 · ②의 study-note 쓰기는 spec 범위 확인·금지영역이 우선 — 못 쓰면 보류 경로(issue-archive §1))**: ①프로젝트 `docs/plans/NEXT.md`(롤링 단일 문서, `templates/next.md`) 갱신 — 다음 작업 후보·발생 가능 문제·방법론 비교·대처·우선순위(관측 신호 기반만 — 자명 작업은 1행. NEXT 항목 착수도 새 작업 폴더 spec부터 — §1) ②log의 **CS 이슈**를 study-note `issue/`에 아카이브(`playbooks/issue-archive.md` — 0건이면 log 1행).
 
@@ -136,3 +138,4 @@
 > v4.2 (2026-09-24): §4 구현 사다리(Ponytail) · 설계 선검증 조건화 · §7 사이클 마감 2단(NEXT.md·issue-archive) — `docs/plans/2026-09-24/ponytail-next-issue-archive/`.
 > v4.3 (2026-11-06): §5 탐색 위임 `explorer`(Sonnet·읽기 전용, 목적 = 컨텍스트 보호) · §0.5 예외(explorer 도구 제한)·§1 L1에 agents/ · §4 이름 권장 1구·§7 워커 토큰(측정 로그 13열)·§8 design-taste 트리거 — 실측(README "실측" 절) · `docs/plans/2026-11-06/harness-v4-3/`(전신 `2026-11-02/agent-search-findings/`).
 > v4.4 (2026-11-18): §8 korean-wording 트리거(한국어 문서의 낱말 — 정본은 rules 저장소 `writing/`) — `docs/plans/2026-11-18/korean-wording-playbook/`.
+> v4.5 (2026-11-19): 선택 질문 아카이브(`decisions.md`)·압축 뒤 재독 강제·고정 지시 재주입 — `docs/plans/2026-11-19/decision-archive-compact-reread/`.
