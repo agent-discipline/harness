@@ -93,10 +93,10 @@ dr_legacy_init() { # fixture 사본 → $SANDBOX/legacy (SCRIPT_DIR 기준 state
     cp "$TESTS_DIR/fixtures/legacy/$f" "$LEG/$f"
   done
 }
-# 보충 13: reread-track 를 한 번 실행해 표시 파일(<state_dir>/.reread-hook-seen)이 생기게 한다(대상 아닌 Read)
+# 보충 13·27: reread-track 를 한 번 실행해 이 세션의 표시 파일(<state_dir>/<sid>.reread-seen)이 생기게 한다(대상 아닌 Read)
 dr_seen() { # <assert-id>
   run_hook reread-track.sh "$(dr_read "$REPO/README.md")"
-  [ -e "$STATE_DIR/.reread-hook-seen" ] || fail "$1"
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail "$1"
 }
 dr_add_task() { # 상태를 다시 쓰지 않고 작업 폴더 + TASK_PATH 만 추가 (TP·SPECF·LOGF·DECF 설정)
   TP=$(realpath -m -- "$REPO/docs/plans/2026-11-19/${1:-t1}"); mkdir -p "$TP"
@@ -104,7 +104,7 @@ dr_add_task() { # 상태를 다시 쓰지 않고 작업 폴더 + TASK_PATH 만 �
   echo "TASK_PATH=$TP" >> "$STATE"
   SPECF="$TP/requirement-spec.md"; LOGF="$TP/log.md"; DECF="$TP/decisions.md"
 }
-dr_heading_count() { grep -cE "^## [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \\($2\\)\$" "$1" 2>/dev/null || true; }  # <file> <id ERE>
+dr_heading_count() { [ -f "$1" ] || { echo 0; return 0; }; grep -cE "^## [0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2} \\($2\\)\$" "$1" 2>/dev/null || true; }  # <file> <id ERE>
 dr_path_lines() { # <.reread> <path> → 첫 탭 뒤가 정확히 path 인 줄 수 (보충 18)
   awk -v p="$2" '{ i = index($0, "\t"); if (i && substr($0, i + 1) == p) n++ } END { print n + 0 }' "$1" 2>/dev/null || echo 0
 }
@@ -493,12 +493,12 @@ test_dr_cp_06() { # [v4.5] compact + TASK_PATH 없음 → 안내 줄 없음, 종
   [ -f "$STATE_DIR/$SID.compact" ] || fail cp06-compact-recorded
 }
 
-test_dr_cp_07() { # [v4.5 보충 13] 표시 파일 없음 → compact 여도 .compact·안내 줄 없음(종전 출력과 바이트 동일)·L1 차단 없음 / 표시 파일 생기면 종전 기대대로
+test_dr_cp_07() { # [v4.5 보충 13·27] 이 세션 표시 파일 없음 → compact 여도 .compact·안내 줄 없음(종전 출력과 바이트 동일)·L1 차단 없음 / 표시 파일 생기면 종전 기대대로
   dr_legacy_init
   dr_setup_task
   dr_raw "$LEG/session-mode-guard.sh" "$(dr_ss compact)" "$SANDBOX/old"
   dr_setup_task
-  [ ! -e "$STATE_DIR/.reread-hook-seen" ] || fail cp07-precondition-no-marker
+  [ ! -e "$STATE_DIR/$SID.reread-seen" ] || fail cp07-precondition-no-marker
   dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss compact)" "$SANDBOX/new"
   [ ! -e "$STATE_DIR/$SID.compact" ] || fail cp07-no-compact-without-marker
   assert_file_not_contains "$SANDBOX/new" '맥락이 압축됐습니다' cp07-no-guidance-without-marker
@@ -511,30 +511,30 @@ test_dr_cp_07() { # [v4.5 보충 13] 표시 파일 없음 → compact 여도 .co
   dr_l1; assert_exit 2 cp07-block-with-marker
 }
 
-test_dr_cp_08() { # [v4.5 보충 13] reread-track 는 대상 아닌 Read·agent_id 있는 Read·TASK_PATH 없음에서도 표시 파일을 만든다
+test_dr_cp_08() { # [v4.5 보충 13·27] reread-track 는 대상 아닌 Read·agent_id 있는 Read·TASK_PATH 없음에서도 표시 파일을 만든다
   write_state auto
-  [ ! -e "$STATE_DIR/.reread-hook-seen" ] || fail cp08-precondition
+  [ ! -e "$STATE_DIR/$SID.reread-seen" ] || fail cp08-precondition
   dr_read_hook "$REPO/README.md"
   assert_exit 0 cp08-nontarget-exit
-  [ -e "$STATE_DIR/.reread-hook-seen" ] || fail cp08-marker-nontarget-no-taskpath
-  rm -f "$STATE_DIR/.reread-hook-seen"
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail cp08-marker-nontarget-no-taskpath
+  rm -f "$STATE_DIR/$SID.reread-seen"
   dr_read_hook "$REPO/README.md" agent-5
-  [ -e "$STATE_DIR/.reread-hook-seen" ] || fail cp08-marker-agent-read
-  rm -f "$STATE_DIR/.reread-hook-seen"
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail cp08-marker-agent-read
+  rm -f "$STATE_DIR/$SID.reread-seen"
   dr_add_task
   dr_read_hook "$SPECF" agent-6
-  [ -e "$STATE_DIR/.reread-hook-seen" ] || fail cp08-marker-agent-target-read
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail cp08-marker-agent-target-read
   dr_reread_has "$SPECF" && fail cp08-agent-read-not-recorded
   return 0
 }
 
-test_dr_cp_09() { # [v4.5 보충 13] 표시 파일은 prune 대상 아님(31일 지난 mtime 이어도 SessionStart 뒤 남음)
+test_dr_cp_09() { # [v4.5 보충 13·27] 현재 세션의 표시 파일은 prune 대상 아님(31일 지난 mtime 이어도 SessionStart 뒤 남음)
   write_state auto
   dr_seen cp09-marker-created
-  touch -d '31 days ago' "$STATE_DIR/.reread-hook-seen"
+  touch -d '31 days ago' "$STATE_DIR/$SID.reread-seen"
   run_hook session-mode-guard.sh "$(dr_ss startup)"
   assert_exit 0 cp09-exit
-  [ -e "$STATE_DIR/.reread-hook-seen" ] || fail cp09-marker-survives-prune
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail cp09-marker-survives-prune
 }
 
 test_dr_cp_10() { # [v4.5 보충 17] prune 은 현재 세션 .compact·.reread 와 모든 세션 *.decisions 를 지우지 않음
@@ -553,6 +553,47 @@ test_dr_cp_10() { # [v4.5 보충 17] prune 은 현재 세션 .compact·.reread �
   [ -f "$STATE_DIR/$SID.reread" ] || fail cp10-own-reread-kept
   [ -f "$STATE_DIR/$other.decisions" ] || fail cp10-other-decisions-kept
   [ -f "$STATE_DIR/$SID.decisions" ] || fail cp10-own-decisions-kept
+}
+
+test_dr_cp_11() { # [v4.5 보충 27 a] 다른 세션 A 가 Read 해 표시 파일을 만들어도, Read 한 적 없는 세션 B 의 compact 는 .compact 를 쓰지 않고 L1 을 막지 않음
+  dr_setup_task                                              # 세션 B = $SID (TASK_PATH 있음, Read 없음)
+  local A="${SID}a"
+  printf 'SCHEMA=4\nMODE=auto\nSPEC=1\nPENDING_GATE=0\nDEBT=0\nTASK_PATH=%s\n' "$TP" > "$STATE_DIR/$A"
+  run_hook reread-track.sh "$(dr_read "$REPO/README.md" | jq -c --arg s "$A" '.session_id=$s')"
+  assert_exit 0 cp11-a-read-exit
+  [ -e "$STATE_DIR/$A.reread-seen" ] || fail cp11-a-marker-created
+  [ ! -e "$STATE_DIR/$SID.reread-seen" ] || fail cp11-b-no-marker
+  run_hook_stdout session-mode-guard.sh "$(dr_ss compact)"
+  assert_exit 0 cp11-b-compact-exit
+  [ ! -e "$STATE_DIR/$SID.compact" ] || fail cp11-b-no-compact
+  assert_stdout_no_match '맥락이 압축됐습니다' cp11-b-no-guidance
+  dr_l1; assert_exit 0 cp11-b-no-block
+  dr_seen cp11-b-marker-after-read                           # 대조: B 가 Read 하면 B 의 compact 가 기록됨
+  run_hook session-mode-guard.sh "$(dr_ss compact)"
+  [ -f "$STATE_DIR/$SID.compact" ] || fail cp11-b-compact-after-own-read
+}
+
+test_dr_cp_12() { # [v4.5 보충 27 b] 옛 디렉토리 단위 .reread-hook-seen 만 있고 세션 표시 파일이 없으면 compact 가 .compact 를 쓰지 않음
+  dr_setup_task
+  : > "$STATE_DIR/.reread-hook-seen"
+  run_hook session-mode-guard.sh "$(dr_ss compact)"
+  assert_exit 0 cp12-exit
+  [ ! -e "$STATE_DIR/$SID.compact" ] || fail cp12-legacy-marker-ignored
+  dr_l1; assert_exit 0 cp12-no-block
+  dr_seen cp12-session-marker
+  run_hook session-mode-guard.sh "$(dr_ss compact)"
+  [ -f "$STATE_DIR/$SID.compact" ] || fail cp12-control-session-marker
+}
+
+test_dr_cp_13() { # [v4.5 보충 27 c] session_id 가 없거나 유효하지 않은 Read → 표시 파일 없음, exit 0
+  write_state auto
+  run_hook reread-track.sh "$(dr_read "$REPO/README.md" | jq -c 'del(.session_id)')"
+  assert_exit 0 cp13-nosid-exit
+  run_hook reread-track.sh "$(dr_read "$REPO/README.md" | jq -c '.session_id="bad.sid/x"')"
+  assert_exit 0 cp13-badsid-exit
+  [ -z "$(find "$SANDBOX" -name '*.reread-seen' 2>/dev/null)" ] || fail cp13-no-marker
+  [ ! -e "$STATE_DIR/.reread-hook-seen" ] || fail cp13-no-dir-marker
+  dr_seen cp13-control-valid-sid
 }
 
 # ══ I4 재독 판정 (reread-track.sh + 판정은 gate-guard 차단으로 관측) ═══════════════
@@ -1248,6 +1289,7 @@ test_dr_ad_20() { # [v4.5 보충 15] 옮길 사이드카를 읽을 수 없음(00
   dr_root_skip && return 0
   write_state auto
   run_hook capture-decision.sh "$(dr_ask1 toolu_u1 '첫?' 'U' 'A안')"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_u1b '첫 다음?' 'U' 'B안')"
   local sc="$STATE_DIR/$SID.decisions"
   [ -f "$sc" ] || fail ad20-sidecar-precondition
   cp "$sc" "$SANDBOX/sc.before"
@@ -1261,8 +1303,15 @@ test_dr_ad_20() { # [v4.5 보충 15] 옮길 사이드카를 읽을 수 없음(00
   [ -f "$sc" ] || fail ad20-sidecar-kept
   dr_is_prefix "$SANDBOX/sc.before" "$sc" || fail ad20-sidecar-not-overwritten
   run_hook capture-decision.sh "$(dr_ask1 toolu_u3 '셋?' 'U' 'C안')"
-  local a c; a=$(dr_lineno "$DECF" '(toolu_u1)'); c=$(dr_lineno "$DECF" '(toolu_u3)')
-  { [ -n "$a" ] && [ -n "$c" ] && [ "$a" -lt "$c" ]; } || fail ad20-migrated-in-order
+  local i a b c m
+  for i in u1 u1b u3; do [ "$(dr_heading_count "$DECF" "toolu_$i")" = "1" ] || fail "ad20-once-$i"; done
+  a=$(dr_lineno "$DECF" '(toolu_u1)'); b=$(dr_lineno "$DECF" '(toolu_u1b)'); c=$(dr_lineno "$DECF" '(toolu_u3)')
+  { [ "$a" -lt "$b" ] && [ "$b" -lt "$c" ]; } || fail ad20-migrated-in-order
+  m=$(dr_heading_count "$DECF" toolu_u2)                     # 000 동안의 u2 는 남길 곳이 없어 유실 가능(경고) — 남았다면 1회·제자리
+  [ "$m" -le 1 ] || fail ad20-u2-at-most-once
+  if [ "$m" = "1" ]; then
+    m=$(dr_lineno "$DECF" '(toolu_u2)'); { [ "$b" -lt "$m" ] && [ "$m" -lt "$c" ]; } || fail ad20-u2-in-place
+  fi
   [ ! -e "$sc" ] || fail ad20-sidecar-removed-after
 }
 
@@ -1420,4 +1469,96 @@ test_dr_bl_12() { # [v4.5 보충 22] 사이드카 비정규·손상 → reinject
   rm -f "$c"
   run_hook_stdout reinject-mode.sh "$(json_prompt '계속')"
   assert_stdout_no_match '재독 상태 판정 불가' bl12-no-compact-no-line
+}
+
+# ══ 계약 보충 3 (리뷰 루프 2) ═════════════════════════════════════════════════
+# PATH 앞에 둘 flock 래퍼. 잠금 대상(fd 인자 → /proc/<pid>/fd 로 풀거나 경로 인자)이 decisions.md 일 때만 개입한다.
+#   mode=swap : 진짜 flock 성공 직후 그 decisions.md 를 다른 inode 의 같은 내용 파일로 교체(mv + cp) — 보충 28
+#   mode=fail : decisions.md 잠금만 실패(exit 1) — 보충 29. 다른 잠금(상태·사이드카)은 진짜 flock 그대로.
+#   개입할 때마다 $DR_FLOCK_HITS 에 한 줄 — 개입이 실제로 일어났는지(재현 성립) 확인용.
+dr_flock_wrapper() { # <mode>
+  local d="$SANDBOX/fakebin"; mkdir -p "$d"
+  DR_REAL_FLOCK=$(command -v flock) || fail flock-missing
+  DR_FLOCK_HITS="$SANDBOX/flock.hits"; : > "$DR_FLOCK_HITS"
+  cat > "$d/flock" <<'WRAP'
+#!/bin/bash
+t=""
+for a in "$@"; do
+  if [[ "$a" =~ ^[0-9]+$ ]] && [ -e "/proc/$$/fd/$a" ]; then t=$(readlink "/proc/$$/fd/$a")
+  elif [ -e "$a" ]; then t=$(realpath -- "$a"); fi
+done
+case "$t" in
+  */decisions.md) ;;
+  *) exec "$DR_REAL_FLOCK" "$@" ;;
+esac
+echo "$DR_FLOCK_MODE $t" >> "$DR_FLOCK_HITS"
+if [ "$DR_FLOCK_MODE" = fail ]; then exit 1; fi
+"$DR_REAL_FLOCK" "$@" || exit $?
+mv -f -- "$t" "$t.swapped-old" && cp -- "$t.swapped-old" "$t"
+exit 0
+WRAP
+  chmod +x "$d/flock"
+  export PATH="$d:$PATH" DR_REAL_FLOCK DR_FLOCK_HITS DR_FLOCK_MODE="$1"
+}
+
+test_dr_ad_23() { # [v4.5 보충 28] 잠근 뒤 decisions.md 가 교체됨 → 새 블록·옮기던 사이드카분이 유실되지 않고(현재 파일 또는 사이드카), 사이드카는 지워지지 않음
+  write_state auto
+  run_hook capture-decision.sh "$(dr_ask1 toolu_x1 '사이드카분?' 'X' 'A안')"
+  local sc="$STATE_DIR/$SID.decisions"
+  [ -f "$sc" ] || fail ad23-sidecar-precondition
+  dr_add_task
+  printf '%s\n\n' "$DR_TITLE" > "$DECF"
+  dr_flock_wrapper swap
+  run_hook capture-decision.sh "$(dr_ask1 toolu_x2 '교체 중 기록?' 'X' 'B안')"
+  assert_exit 0 ad23-exit
+  grep -q '^swap .*/decisions.md$' "$DR_FLOCK_HITS" || fail ad23-swap-reproduced
+  local i n
+  for i in x1 x2; do
+    n=$(( $(dr_heading_count "$DECF" "toolu_$i") + $(dr_heading_count "$sc" "toolu_$i") ))
+    [ "$n" -ge 1 ] || { echo "  [dbg] $i 는 교체된 옛 파일에만 있음"; fail "ad23-not-lost-$i"; }
+  done
+  [ -f "$sc" ] || fail ad23-sidecar-kept
+  [ "$(dr_heading_count "$sc" toolu_x1)" = "1" ] || fail ad23-sidecar-content-kept
+}
+
+test_dr_ad_24() { # [v4.5 보충 29] decisions.md 잠금 실패 → 이 실행이 만든 0바이트 decisions.md 가 남지 않음·블록은 사이드카·경고 / 기존 파일은 그대로
+  dr_setup_task
+  dr_flock_wrapper fail
+  run_hook capture-decision.sh "$(dr_ask1 toolu_f1 '잠금 실패?' 'F' 'A안')"
+  assert_exit 0 ad24-exit
+  grep -q '^fail .*/decisions.md$' "$DR_FLOCK_HITS" || fail ad24-fail-reproduced
+  if [ -e "$DECF" ] && [ ! -s "$DECF" ]; then fail ad24-no-empty-decisions-left; fi
+  [ ! -e "$DECF" ] || [ "$(dr_heading_count "$DECF" toolu_f1)" = "0" ] || fail ad24-not-written-unlocked
+  assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_f1)' ad24-block-in-sidecar
+  [ -n "$HOOK_STDERR" ] || fail ad24-warn
+  # 이미 내용이 있던 decisions.md 는 그대로
+  printf '%s\n\n## 2026-01-01 00:00:00 (toolu_pre)\n\n### P\n- 질문: p?\n- 선택지: a / b\n- 답: a\n' "$DR_TITLE" > "$DECF"
+  cp "$DECF" "$SANDBOX/ad24.before"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_f2 '기존 파일?' 'F' 'B안')"
+  assert_exit 0 ad24-existing-exit
+  cmp -s "$SANDBOX/ad24.before" "$DECF" || fail ad24-existing-unchanged
+  assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_f2)' ad24-existing-block-in-sidecar
+}
+
+test_dr_ad_25() { # [v4.5 보충 30] decisions.md 를 읽을 수 없음(200) → 파일 그대로·블록은 사이드카·경고, 같은 id 두 번이어도 복구 뒤 1회
+  dr_root_skip && return 0
+  dr_setup_task
+  run_hook capture-decision.sh "$(dr_ask1 toolu_r0 '처음?' 'R' 'A안')"
+  [ -f "$DECF" ] || fail ad25-precondition
+  cp "$DECF" "$SANDBOX/ad25.before"
+  chmod 200 "$DECF"
+  local j; j=$(dr_ask1 toolu_rr '읽기 불가?' 'R' 'B안')
+  run_hook capture-decision.sh "$j"
+  local e1=$HOOK_EXIT w1=$HOOK_STDERR
+  run_hook capture-decision.sh "$j"
+  chmod 644 "$DECF"
+  HOOK_EXIT=$e1; HOOK_STDERR=$w1
+  assert_exit 0 ad25-exit
+  [ -n "$w1" ] || fail ad25-warn
+  cmp -s "$SANDBOX/ad25.before" "$DECF" || fail ad25-unchanged
+  assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_rr)' ad25-block-in-sidecar
+  run_hook capture-decision.sh "$(dr_ask1 toolu_r2 '복구 뒤?' 'R' 'C안')"
+  [ "$(dr_heading_count "$DECF" toolu_rr)" = "1" ] || fail ad25-once-after-restore
+  local a b c; a=$(dr_lineno "$DECF" '(toolu_r0)'); b=$(dr_lineno "$DECF" '(toolu_rr)'); c=$(dr_lineno "$DECF" '(toolu_r2)')
+  { [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ] && [ "$a" -lt "$b" ] && [ "$b" -lt "$c" ]; } || fail ad25-order
 }

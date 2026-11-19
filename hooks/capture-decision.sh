@@ -125,12 +125,27 @@ sidecar_fallback() { # 새 블록을 사이드카로 — 실패하면 경고(이
     echo "[capture-decision] 경고: 사이드카($SIDECAR)를 읽지 못함 — 순서를 지키려고 $D 에 쓰지 않고 사이드카에 덧붙입니다(사이드카는 지우지 않음)." >&2
     sidecar_fallback; exit 0
   fi
+  # 보충 30: 있는데 읽을 수 없으면 중복 판정이 안 되므로 쓰지 않는다.
+  D_EXISTED=0
+  if [ -e "$D" ]; then
+    D_EXISTED=1
+    if [ ! -r "$D" ]; then
+      echo "[capture-decision] 경고: $D 를 읽을 수 없음(중복 판정 불가) — 쓰지 않고 사이드카($SIDECAR)에 쌓습니다." >&2
+      sidecar_fallback; exit 0
+    fi
+  fi
+  # 보충 29: 실패 경로에서 이 실행이 새로 만든 빈 decisions.md 를 지운다(그 사이 다른 writer 가 내용을 썼으면 남김).
+  drop_created_empty() { if [ "$D_EXISTED" = 0 ] && [ -f "$D" ] && [ ! -s "$D" ]; then rm -f -- "$D"; fi; }
   # append-only: 목적지를 >> 로 연다(임시 파일 교체를 쓰지 않는다 — 읽기 전용 decisions.md 를 덮어쓰지 않게).
   if ! { exec 8>>"$D"; } 2>/dev/null || ! flock -x -w 2 8 2>/dev/null; then
+    drop_created_empty
     echo "[capture-decision] 경고: $D 를 열거나 잠그지 못함 — 사이드카($SIDECAR)에 쌓고 다음 기록 때 다시 옮깁니다." >&2
     sidecar_fallback; exit 0
   fi
+  # 보충 28: 잠근 fd 의 inode(쓰기 뒤 경로의 inode 와 비교 — 쓰는 사이 파일 교체 감지).
+  FD_INO=$(stat -L -c %i /proc/self/fd/8 2>/dev/null) || FD_INO=""
   if ! MIG=$(pending_from_sidecar "$D"); then
+    drop_created_empty
     echo "[capture-decision] 경고: 사이드카($SIDECAR)를 읽지 못함 — 순서를 지키려고 $D 에 쓰지 않고 사이드카에 덧붙입니다(사이드카는 지우지 않음)." >&2
     sidecar_fallback; exit 0
   fi
@@ -138,7 +153,7 @@ sidecar_fallback() { # 새 블록을 사이드카로 — 실패하면 경고(이
   if has_id "$D" || { [ -n "$TOOL_USE_ID" ] && printf '%s\n' "$MIG" | grep -F -- " ($TOOL_USE_ID)" | grep -q '^## '; }; then
     NEW=""
   fi
-  if [ -z "$MIG" ] && [ -z "$NEW" ]; then rm -f -- "$SIDECAR"; exit 0; fi
+  if [ -z "$MIG" ] && [ -z "$NEW" ]; then drop_created_empty; rm -f -- "$SIDECAR"; exit 0; fi
   CHUNK=""
   [ -n "$MIG" ] && CHUNK="$MIG"$'\n'
   if [ -n "$NEW" ]; then
@@ -148,14 +163,21 @@ sidecar_fallback() { # 새 블록을 사이드카로 — 실패하면 경고(이
   SIZE=$(stat -c %s -- "$D" 2>/dev/null) || SIZE=""
   if [ "$SIZE" = 0 ]; then OUT="$TITLE"$'\n\n'"$CHUNK"
   else OUT="$(sep_for "$D"; printf '.')"; OUT="${OUT%.}$CHUNK"; fi
-  if [ -n "$SIZE" ] && printf '%s' "$OUT" >&8 2>/dev/null; then
-    rm -f -- "$SIDECAR"
+  if [ -n "$SIZE" ] && [ -n "$FD_INO" ] && printf '%s' "$OUT" >&8 2>/dev/null; then
+    if [ "$(stat -c %i -- "$D" 2>/dev/null)" = "$FD_INO" ]; then
+      rm -f -- "$SIDECAR"
+      exit 0
+    fi
+    # 쓰는 사이 경로의 파일이 바뀌었다 — 쓴 내용은 경로에 없다. 옮기던 분은 사이드카에 그대로, 새 블록도 사이드카로.
+    echo "[capture-decision] 경고: $D 가 기록 중 다른 파일로 바뀜(inode 불일치) — 사이드카($SIDECAR)에 남기고 다음 기록 때 다시 옮깁니다." >&2
+    [ -z "$NEW" ] || sidecar_fallback
     exit 0
   fi
   # 쓰기 실패 — 부분 쓰기를 원래 크기로 되돌린다. 옮길 사이드카분은 사이드카에 그대로 남는다.
   if [ -n "$SIZE" ] && ! truncate -s "$SIZE" -- "$D" 2>/dev/null; then
     echo "[capture-decision] 경고: $D 쓰기 실패 후 되돌리기도 실패 — ${SIZE} 바이트 뒤에 일부 블록이 남았을 수 있습니다." >&2
   fi
+  drop_created_empty
   echo "[capture-decision] 경고: $D 에 쓰지 못함 — 사이드카($SIDECAR)에 쌓고 다음 기록 때 다시 옮깁니다." >&2
   [ -z "$NEW" ] || sidecar_fallback
   exit 0

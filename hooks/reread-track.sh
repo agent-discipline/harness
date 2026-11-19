@@ -7,7 +7,7 @@
 #   - 메인의 Read 만(agent_id 있으면 무시 — 서브에이전트가 읽어도 메인 맥락은 복구되지 않는다).
 #   - 대상 = 상태 TASK_PATH 의 requirement-spec.md·log.md·decisions.md (canonical 일치). 그 밖의 Read 는 무시.
 #   - offset·limit 부분 읽기도 읽은 것으로 본다(전부 읽었는지는 훅이 알 수 없다 — README 한계).
-#   - 매 호출 상태 디렉토리에 등록 표시 .reread-hook-seen 을 보장한다(없을 때만 생성 — session-mode-guard 가 확인).
+#   - 매 호출 세션 표시 <sid>.reread-seen 을 보장한다(없을 때만 생성 — session-mode-guard 가 그 세션 것만 확인).
 #   - 상태파일은 읽기만 한다. 쓰기 = flock + temp + mv. **어떤 입력·실패에서도 exit 0**(관측 훅 — I7).
 
 set -u   # set -e 금지 — 모든 실패가 exit 0 으로 수렴해야 한다
@@ -34,13 +34,15 @@ SESSION_ID="$RAW_SID"
 if [ -z "${CWD:-}" ] || [ ! -d "$CWD" ]; then CWD="$PWD"; fi
 STATE_DIR="$(state_resolve_dir "$CWD" "$SESSION_ID")"
 
-# 등록 표시(.reread-hook-seen) — 이 훅이 돈 적이 있다는 표시. session-mode-guard 는 이것이 있을 때만 압축 시각을
-#   쓴다(Read 등록 없이 배포된 상태의 영구 차단 방지). 대상·agent_id 와 무관하게 매 호출 확인, 없을 때만 만든다.
-if [ ! -e "$STATE_DIR/.reread-hook-seen" ]; then
+# 세션 표시(<sid>.reread-seen, 보충 27) — 이 세션에서 이 훅이 돈 적이 있다는 표시. session-mode-guard 는 그 세션의
+#   표시가 있을 때만 압축 시각을 쓴다(Read 등록 없는 상태의 영구 차단 방지). 대상·agent_id 와 무관하게 매 호출 확인,
+#   없을 때만 만든다(유효한 session_id 일 때만 — 위에서 걸렀다).
+SEEN="$STATE_DIR/$SESSION_ID.reread-seen"
+if [ ! -e "$SEEN" ]; then
   _ED_RC=0; state_ensure_dir "$STATE_DIR" || _ED_RC=$?
   case "$_ED_RC" in
-    0|3) : >> "$STATE_DIR/.reread-hook-seen" 2>/dev/null \
-           || echo "[reread-track] 경고: 등록 표시 생성 실패($STATE_DIR/.reread-hook-seen) — 압축 뒤 재독 강제가 걸리지 않습니다." >&2 ;;
+    0|3) : >> "$SEEN" 2>/dev/null \
+           || echo "[reread-track] 경고: 세션 표시 생성 실패($SEEN) — 압축 뒤 재독 강제가 걸리지 않습니다." >&2 ;;
     *) echo "[reread-track] 경고: 상태 디렉토리 확보 실패 (원인: ${STATE_ENSURE_REASON:-unknown}) — 기록 생략." >&2
        exit 0 ;;
   esac
