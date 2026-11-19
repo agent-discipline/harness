@@ -22,14 +22,42 @@
 | 11-19 19:05 | 메인: 전체 실행 | 353 통과, 0 실패. 커밋 `e73a8c6` |
 | 11-19 19:06~19:18 | 리뷰 루프 2 — Opus 워커(199k) ∥ codex. 미러 `/tmp/claude-1000/hmr2-loop` | 루프 1 수정 반영 확인(Opus가 `.git` 없는 미러에서 353 통과 실행). 새 결함: 표시 파일이 상태 디렉토리 단위라 다른 세션의 표시로 영구 차단 재발(두 리뷰 공통, Opus 재현) · 기록 중 파일 교체 시 유실(codex) · 잠금 실패 때 빈 파일(Opus) · 읽을 수 없는 `decisions.md`에서 중복(Opus). codex의 '테스트 헬퍼의 탭이 역슬래시-t' 지적은 기각(메인과 테스트 워커가 실제 탭임을 확인) |
 | 11-19 19:19~19:24 | 구현 워커 후속 4(누적 약 270k) · 테스트 워커 후속 3(누적 289k) — 계약 보충 3(27~31) | 표시 파일을 세션 단위로, inode 확인, 빈 파일 정리, 읽을 수 없는 목적지 처리. 테스트 98개(파일 교체를 flock 래퍼로 재현) |
+| 11-19 19:25 | 메인: lock 재생성(사유: 케이스 추가) → 전체 실행 | 359 통과. 커밋 `f8e028b` |
+| 11-19 19:26~19:36 | 리뷰 루프 3(좁게) — Opus 워커(118k) ∥ codex. 미러 `/tmp/claude-1000/hmr3-loop` | 27·28·30항 반영 확인, Opus가 미러에서 359 통과 실행·10세션×5건 동시 기록 5회 모두 정상. 새 결함 1건(두 리뷰 공통): 29항의 빈 파일 삭제가 잠금 밖에서 일어나 다른 세션의 기록을 지울 수 있음(Opus가 확인~삭제 사이를 벌려 재현). 낮음: `/proc` 실패 시 사이드카에만 쌓임 |
+| 11-19 19:37~19:41 | 구현 워커 후속 5(누적 285k) · 테스트 워커 후속 4(누적 303k) | **29항 철회**(삭제 함수와 호출 5곳 제거), inode 대체 경로(32항). 테스트 100개(`rm` 래퍼로 '훅이 decisions.md를 지우지 않음'을 직접 확인) |
+| 11-19 19:45 | 메인: lock 재생성(사유: 케이스 수정·추가) → 전체 실행 → 동시 기록 실험 재실행 | **361 통과, 0 실패**. 리뷰어의 실험 스크립트(`exp1.sh 10 5`)를 최종 훅으로 3회: 매번 제목 1·블록 50·중복 0·사이드카 잔여 0. `drop_created_empty` 잔존 0 |
+| 11-19 19:45 | 리뷰 종료 판정 | 최대 3루프 도달. 루프 3에서도 채택 1건이 있어 '신규 채택 0인 루프' 조건은 미충족 → **`review unresolved`가 아니라 open finding 0·조건 미충족**으로 기록하고 사용자에게 보고. 근거: 루프 3의 수정은 루프 2에서 넣은 삭제 동작의 제거(코드 감소)이고, 제거 뒤 전체 테스트와 동시 기록 실험을 메인이 재실행. 4회차 여부는 사용자 결정 |
 
 ## 리뷰 ledger (中↑ — 듀얼 리뷰가 돈 작업 필수)
 
-- review packet: (리뷰 때 기록)
+- review packet: base `b685d3e` · `$OUT` `/tmp/claude-1000/hrv-UpGr` · 미러 루프1 `/tmp/claude-1000/hmr-MdA3` · 루프2 `/tmp/claude-1000/hmr2-loop` · 루프3 `/tmp/claude-1000/hmr3-loop`
 
 | id | first_seen_loop | source | 근거(file:line) | disposition | status | fixed_in_loop |
 |----|-----------------|--------|-----------------|-------------|--------|---------------|
-| | | | | | | |
+| H1 | 1 | opus F1 | session-mode-guard.sh:69-77 · gate-guard.sh:346-357 — Read 훅 미등록 상태의 영구 차단 | 채택(표시 파일) | fixed | 1(디렉토리 단위) → 2(세션 단위로 재수정) |
+| H2 | 1 | opus F2 | tests/cases/decision-reread.sh:9,86-92 — git 이력 의존으로 배포 smoke 실패 | 채택(fixture) | fixed | 1 |
+| H3 | 1 | opus F3 · codex F7 | gate-guard.sh:86-111 · state-lib.sh:385-395 — 고정 지시 파일 무게이트·심링크·무제한 읽기 | 일부 채택(심링크 거부·64KB) / ask 게이트는 §4 범위라 **user-deferred** | fixed / user-deferred | 1 |
+| H4 | 1 | codex F1 · opus F4 | gate-guard.sh:210 · state-lib.sh:362-373 — Bash로 사이드카를 고쳐 차단 해제 | 일부 채택(판정 불가 알림·README) / 차단 자체는 수용한 한계 — **user-deferred** | fixed / user-deferred | 1 |
+| H5 | 1 | codex F2 · opus F5 | capture-decision.sh:93-127 — 세션별 잠금으로 동시 기록 손상(실측) | 채택 | fixed | 1 |
+| H6 | 1 | codex F3 | capture-decision.sh:104 — 읽지 못한 사이드카 삭제 | 채택 | fixed | 1 |
+| H7 | 1 | codex F4 · opus F10 | capture-decision.sh:118-123 — 부분 쓰기 | 채택 | fixed | 1 |
+| H8 | 1 | codex F5 · opus F9 | session-mode-guard.sh:65 — prune이 사이드카 삭제 | 채택 | fixed | 1 |
+| H9 | 1 | codex F6 · opus F6 | state-lib.sh:375 · capture-decision.sh:78-83 — 탭·역슬래시 경로 | 채택 | fixed | 1 |
+| H10 | 1 | opus F7 | capture-decision.sh:64-66 — 빈 id 블록 유실 | 채택 | fixed | 1 |
+| H11 | 1 | opus F8 | capture-decision.sh:52 — CR·U+2028 | 채택 | fixed | 1 |
+| H12 | 1 | opus F11 | 새 decisions.md 뒤 재차단 | 기각(감사: '읽음' 정의 위반) — 한계로 README | — | — |
+| H13 | 1 | opus F12 | reread-track.sh:18-44 — 성능 | 채택 | fixed | 1 |
+| L2-1 | 2 | codex F1 · opus N1 | session-mode-guard.sh:75 — 디렉토리 단위 표시 파일 | 채택(세션 단위) | fixed | 2 |
+| L2-2 | 2 | codex F2 | tests/cases/decision-reread.sh:118 — 탭 리터럴 | 기각(실제 탭 문자 — 메인·테스트 워커 확인) | — | — |
+| L2-3 | 2 | codex F3 | capture-decision.sh:129 — 기록 중 파일 교체 | 채택(inode 확인) | fixed | 2 |
+| L2-4 | 2 | codex F4 | tests ad_20 — 가운데 블록 미검증 | 채택 | fixed | 2 |
+| L2-5 | 2 | opus N2 | capture-decision.sh:129 — 빈 파일 | 채택(삭제) → 루프 3에서 철회 | fixed(철회) | 2 → 3 |
+| L2-6 | 2 | opus N3 | capture-decision.sh:68 — 읽을 수 없는 목적지 | 채택 | fixed | 2 |
+| L3-1 | 3 | codex · opus L3-01 | capture-decision.sh:138-141 — 잠금 밖 삭제 경합(재현) | 채택(삭제 동작 제거) | fixed | 3 |
+| L3-2 | 3 | opus L3-02 | capture-decision.sh:146 — /proc 실패 | 채택(대체 경로) | fixed | 3 |
+| L3-3 | 3 | opus T-01 | tests ad_24 — 빈 파일 보존 미검증 | 채택 | fixed | 3 |
+
+- 종료 조건: open finding 0 · 루프 3 신규 채택 3건(조건 미충족) · user-deferred 2건(H3 ask 게이트, H4 Bash 우회). 사용자 보고 뒤 결정.
 
 ## 생략한 검증 (긴급 경로 빚 — DEBT=1인 동안 정본)
 

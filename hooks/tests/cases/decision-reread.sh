@@ -1474,11 +1474,13 @@ test_dr_bl_12() { # [v4.5 보충 22] 사이드카 비정규·손상 → reinject
 # ══ 계약 보충 3 (리뷰 루프 2) ═════════════════════════════════════════════════
 # PATH 앞에 둘 flock 래퍼. 잠금 대상(fd 인자 → /proc/<pid>/fd 로 풀거나 경로 인자)이 decisions.md 일 때만 개입한다.
 #   mode=swap : 진짜 flock 성공 직후 그 decisions.md 를 다른 inode 의 같은 내용 파일로 교체(mv + cp) — 보충 28
-#   mode=fail : decisions.md 잠금만 실패(exit 1) — 보충 29. 다른 잠금(상태·사이드카)은 진짜 flock 그대로.
+#   mode=fail : decisions.md 잠금만 실패(exit 1) — 보충 29(철회 뒤: 빈 파일 삭제 없음). 다른 잠금(상태·사이드카)은 진짜 flock 그대로.
+#   mode=pass : 개입 없음(같은 테스트 안에서 정상 경로로 되돌릴 때).
 #   개입할 때마다 $DR_FLOCK_HITS 에 한 줄 — 개입이 실제로 일어났는지(재현 성립) 확인용.
+dr_path_without() { printf '%s' "$PATH" | tr ':' '\n' | grep -vxF -- "$1" | paste -sd: -; }   # <dir> → 그 디렉토리를 뺀 PATH
 dr_flock_wrapper() { # <mode>
   local d="$SANDBOX/fakebin"; mkdir -p "$d"
-  DR_REAL_FLOCK=$(command -v flock) || fail flock-missing
+  DR_REAL_FLOCK=$(PATH=$(dr_path_without "$d") command -v flock) || fail flock-missing   # 래퍼 자신을 잡지 않게
   DR_FLOCK_HITS="$SANDBOX/flock.hits"; : > "$DR_FLOCK_HITS"
   cat > "$d/flock" <<'WRAP'
 #!/bin/bash
@@ -1491,6 +1493,7 @@ case "$t" in
   */decisions.md) ;;
   *) exec "$DR_REAL_FLOCK" "$@" ;;
 esac
+if [ "$DR_FLOCK_MODE" = pass ]; then exec "$DR_REAL_FLOCK" "$@"; fi
 echo "$DR_FLOCK_MODE $t" >> "$DR_FLOCK_HITS"
 if [ "$DR_FLOCK_MODE" = fail ]; then exit 1; fi
 "$DR_REAL_FLOCK" "$@" || exit $?
@@ -1521,23 +1524,94 @@ test_dr_ad_23() { # [v4.5 보충 28] 잠근 뒤 decisions.md 가 교체됨 → �
   [ "$(dr_heading_count "$sc" toolu_x1)" = "1" ] || fail ad23-sidecar-content-kept
 }
 
-test_dr_ad_24() { # [v4.5 보충 29] decisions.md 잠금 실패 → 이 실행이 만든 0바이트 decisions.md 가 남지 않음·블록은 사이드카·경고 / 기존 파일은 그대로
+# PATH 앞에 둘 rm·unlink 래퍼 — 호출 인자를 $DR_RM_LOG 에 기록하고 진짜 명령 실행(훅이 decisions.md 를 지우지 않음 확인용)
+dr_rm_wrapper() {
+  local d="$SANDBOX/fakebin" c; mkdir -p "$d"
+  DR_REAL_RM=$(PATH=$(dr_path_without "$d") command -v rm) || fail rm-missing         # 래퍼 자신을 잡지 않게(재호출 시 무한 exec 방지)
+  DR_REAL_UNLINK=$(PATH=$(dr_path_without "$d") command -v unlink) || fail unlink-missing
+  DR_RM_LOG="$SANDBOX/rm.log"; : > "$DR_RM_LOG"
+  for c in rm unlink; do
+    printf '#!/bin/bash\nprintf "%%s %%s\\n" %s "$*" >> "$DR_RM_LOG"\nexec "$DR_REAL_%s" "$@"\n' "$c" "$(printf '%s' "$c" | tr a-z A-Z)" > "$d/$c"
+    chmod +x "$d/$c"
+  done
+  export PATH="$d:$PATH" DR_REAL_RM DR_REAL_UNLINK DR_RM_LOG
+  [ "$(command -v rm)" = "$d/rm" ] || fail rm-wrapper-active
+}
+
+test_dr_ad_24() { # [v4.5 29항 철회] decisions.md 잠금 실패 → 블록은 사이드카·경고·exit 0, decisions.md 는 없거나 0바이트(내용 있는 파일 생성 금지) / 전부터 있던 0바이트 파일은 남음 / 내용 있던 파일은 그대로
   dr_setup_task
   dr_flock_wrapper fail
   run_hook capture-decision.sh "$(dr_ask1 toolu_f1 '잠금 실패?' 'F' 'A안')"
   assert_exit 0 ad24-exit
   grep -q '^fail .*/decisions.md$' "$DR_FLOCK_HITS" || fail ad24-fail-reproduced
-  if [ -e "$DECF" ] && [ ! -s "$DECF" ]; then fail ad24-no-empty-decisions-left; fi
-  [ ! -e "$DECF" ] || [ "$(dr_heading_count "$DECF" toolu_f1)" = "0" ] || fail ad24-not-written-unlocked
+  if [ -e "$DECF" ] && [ -s "$DECF" ]; then fail ad24-no-content-file-created; fi
   assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_f1)' ad24-block-in-sidecar
   [ -n "$HOOK_STDERR" ] || fail ad24-warn
-  # 이미 내용이 있던 decisions.md 는 그대로
+  # 실행 전부터 있던 0바이트 decisions.md 는 실행 뒤에도 남는다(삭제 금지)
+  : > "$DECF"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_f0 '빈 파일?' 'F' 'B안')"
+  assert_exit 0 ad24-empty-exit
+  [ -f "$DECF" ] || fail ad24-preexisting-empty-kept
+  [ ! -s "$DECF" ] || fail ad24-preexisting-empty-unchanged
+  assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_f0)' ad24-empty-block-in-sidecar
+  # 이미 내용이 있던 decisions.md 는 바이트 그대로
   printf '%s\n\n## 2026-01-01 00:00:00 (toolu_pre)\n\n### P\n- 질문: p?\n- 선택지: a / b\n- 답: a\n' "$DR_TITLE" > "$DECF"
   cp "$DECF" "$SANDBOX/ad24.before"
   run_hook capture-decision.sh "$(dr_ask1 toolu_f2 '기존 파일?' 'F' 'B안')"
   assert_exit 0 ad24-existing-exit
   cmp -s "$SANDBOX/ad24.before" "$DECF" || fail ad24-existing-unchanged
   assert_file_contains "$STATE_DIR/$SID.decisions" '(toolu_f2)' ad24-existing-block-in-sidecar
+}
+
+test_dr_ad_24b() { # [v4.5 29항 철회] 잠금 실패로 0바이트 decisions.md 가 남은 뒤 정상 호출 → 제목 줄 정확히 1개(1행)·사이드카분 순서대로 이동
+  dr_setup_task
+  : > "$DECF"                                                # 잠금 실패 뒤 남은 0바이트 파일 상태를 확정적으로 만든다
+  dr_flock_wrapper fail
+  run_hook capture-decision.sh "$(dr_ask1 toolu_g1 '첫?' 'G' 'A안')"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_g2 '둘?' 'G' 'B안')"
+  [ -f "$DECF" ] && [ ! -s "$DECF" ] || fail ad24b-empty-left
+  [ "$(dr_heading_count "$STATE_DIR/$SID.decisions" 'toolu_g[12]')" = "2" ] || fail ad24b-sidecar-precondition
+  export DR_FLOCK_MODE=pass
+  run_hook capture-decision.sh "$(dr_ask1 toolu_g3 '셋?' 'G' 'C안')"
+  assert_exit 0 ad24b-exit
+  [ "$(sed -n 1p "$DECF")" = "$DR_TITLE" ] || fail ad24b-title-line1
+  [ "$(dr_count "$DECF" "$DR_TITLE")" = "1" ] || fail ad24b-title-once
+  local i a b c
+  for i in g1 g2 g3; do [ "$(dr_heading_count "$DECF" "toolu_$i")" = "1" ] || fail "ad24b-once-$i"; done
+  a=$(dr_lineno "$DECF" '(toolu_g1)'); b=$(dr_lineno "$DECF" '(toolu_g2)'); c=$(dr_lineno "$DECF" '(toolu_g3)')
+  { [ "$a" -lt "$b" ] && [ "$b" -lt "$c" ]; } || fail ad24b-order
+  [ ! -e "$STATE_DIR/$SID.decisions" ] || fail ad24b-sidecar-removed
+}
+
+test_dr_ad_26() { # [v4.5 29항 철회] 훅은 decisions.md 를 지우지 않는다 — 잠금 실패·쓰기 실패·사이드카 읽기 실패 경로 모두에서 rm/unlink 인자에 decisions.md 없음
+  dr_root_skip && return 0
+  dr_setup_task
+  dr_flock_wrapper fail
+  dr_rm_wrapper
+  local sc="$STATE_DIR/$SID.decisions"
+  # ① 잠금 실패
+  run_hook capture-decision.sh "$(dr_ask1 toolu_d1 '잠금 실패?' 'D' 'A안')"
+  grep -q '^fail .*/decisions.md$' "$DR_FLOCK_HITS" || fail ad26-lockfail-reproduced
+  # 정상 경로로 되돌려 decisions.md 에 내용을 만든다(사이드카분 이동 포함)
+  export DR_FLOCK_MODE=pass
+  run_hook capture-decision.sh "$(dr_ask1 toolu_d2 '정상?' 'D' 'B안')"
+  [ "$(dr_heading_count "$DECF" toolu_d2)" = "1" ] || fail ad26-normal-recorded
+  # ② 쓰기 실패(decisions.md 444)
+  chmod 444 "$DECF"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_d3 '쓰기 실패?' 'D' 'C안')"
+  chmod 644 "$DECF"
+  assert_exit 0 ad26-writefail-exit
+  assert_file_contains "$sc" '(toolu_d3)' ad26-writefail-to-sidecar
+  # ③ 사이드카 읽기 실패(000)
+  chmod 000 "$sc"
+  run_hook capture-decision.sh "$(dr_ask1 toolu_d4 '사이드카 읽기 실패?' 'D' 'A안')"
+  chmod 644 "$sc"
+  assert_exit 0 ad26-sidecarfail-exit
+  [ -f "$DECF" ] || fail ad26-decisions-still-exists
+  # 인자 중 파일 이름이 정확히 decisions.md 인 것(임시 파일 decisions.md.XXXX 등은 허용)
+  if awk '{ for (i = 2; i <= NF; i++) { n = split($i, a, "/"); if (a[n] == "decisions.md") f = 1 } } END { exit !f }' "$DR_RM_LOG"; then
+    echo "  [dbg] $(grep -F 'decisions.md' "$DR_RM_LOG" | head -2 | tr '\n' ' ')"; fail ad26-never-removes-decisions-md
+  fi
 }
 
 test_dr_ad_25() { # [v4.5 보충 30] decisions.md 를 읽을 수 없음(200) → 파일 그대로·블록은 사이드카·경고, 같은 id 두 번이어도 복구 뒤 1회
