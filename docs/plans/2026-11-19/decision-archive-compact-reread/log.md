@@ -32,6 +32,9 @@
 | 11-19 20:25 | `deploy.sh` 2차 → smoke 통과, 배포 완료 | 백업 `~/.claude/.deploy-backup-594567`. `~/.claude/settings.json` 백업(`settings.json.bak-2026-11-19-reread`) 뒤 PostToolUse에 `AskUserQuestion`→`capture-decision.sh`, `Read`→`reread-track.sh`만 추가(다른 설정 동일 확인) |
 | 11-19 20:30~21:05 | 실제 세션 smoke(이 세션) | ①Read → `<sid>.reread-seen`·`.reread` 기록 확인 ②질문 도구 답 → `decisions.md`에 블록 기록 확인(이 폴더의 `decisions.md` — 첫 블록) ③사용자 확인("한국어 응답 한 줄") 뒤 `~/.claude/standing-instructions.md` 생성 → reinject 출력 끝에 `[고정 지시]` 줄 확인. 압축 뒤 차단은 다음 압축 때 관측(이 세션은 압축이 잦음) |
 | 11-19 21:05 | 사용자 결정: 승인 창 "넣는다" | 명세 "계약 보충 4"(33·34). 후속 구현 착수 |
+| 11-19 21:05~21:10 | 테스트 워커 후속 5(누적 310k)·구현 워커 후속 6(누적 294k) — 계약 보충 33 | `gate-guard.sh` #1b(상태파일 하드 거부 다음, L0/L1 분류 앞)에서 고정 지시 파일 Edit/Write/MultiEdit에 ask. 테스트 7개(sa_01~07) |
+| 11-19 21:20 | 메인: lock 재생성(사유: 케이스 추가) → 전체 실행 | 368 통과. 커밋 `8ac1565` |
+| 11-19 21:25 | post-fix 타깃 리뷰(codex, 미러 `/tmp/claude-1000/hmr4-ask`) | 중간 3건 — 모두 기각: ①`session_id` 없는 입력은 그 앞에서 통과(훅 전체의 기존 원칙 — Claude Code는 항상 session_id를 보냄) ②하드링크·대소문자 무시 파일 시스템(하드링크를 만들려면 Bash가 필요 — 수용한 한계, 대상 환경은 Linux) ③고정 지시 파일이 심링크일 때 그 대상 파일 쓰기에도 ask(해가 없음 — 승인 창 한 번). 테스트 지적 2건(존재하지 않는 `sub/../`, 순서 입증 약함)은 낮음 — 미수정으로 기록 |
 
 ## 리뷰 ledger (中↑ — 듀얼 리뷰가 돈 작업 필수)
 
@@ -61,6 +64,10 @@
 | L3-1 | 3 | codex · opus L3-01 | capture-decision.sh:138-141 — 잠금 밖 삭제 경합(재현) | 채택(삭제 동작 제거) | fixed | 3 |
 | L3-2 | 3 | opus L3-02 | capture-decision.sh:146 — /proc 실패 | 채택(대체 경로) | fixed | 3 |
 | L3-3 | 3 | opus T-01 | tests ad_24 — 빈 파일 보존 미검증 | 채택 | fixed | 3 |
+
+| A1 | post-fix | codex | gate-guard.sh:65 — session_id 없는 입력에서 ask 생략 | 기각(기존 원칙: 세션 식별 불가 = inert) | — | — |
+| A2 | post-fix | codex | gate-guard.sh:306 — 하드링크·대소문자 | 기각(Bash 필요 — 수용한 한계) | — | — |
+| A3 | post-fix | codex | gate-guard.sh:307 — 심링크 대상에 추가 ask | 기각(무해) | — | — |
 
 - 종료 조건: open finding 0 · 루프 3 신규 채택 3건(조건 미충족) · user-deferred 2건(H3 ask 게이트, H4 Bash 우회). 사용자 보고 뒤 결정.
 
