@@ -299,6 +299,20 @@ case "$CFILE" in
     ;;
 esac
 
+# #1b) 고정 지시 파일(~/.claude/standing-instructions.md) 쓰기 → 네이티브 승인(ask) (v4.5 계약 보충 33).
+#    모든 세션에 매 턴 주입되므로 SPEC/MODE·agent_id 와 무관하게 사용자 확인을 받는다. 양쪽 모두 canon_file 로
+#    해소해 비교(아직 없는 파일·심링크 경유도 같다). HOME 이 비었거나 해소 실패면 이 판정은 건너뛴다(종전 흐름).
+#    JSON 형식은 git-guard emit_ask 와 같다(stdout + exit 0). PostToolUse·Bash 는 대상 아님(Bash 는 한계).
+if [ "$EVENT" = "PreToolUse" ] && [ -n "${HOME:-}" ] \
+   && SI_CANON=$(canon_file "$HOME/.claude/standing-instructions.md") && [ -n "$SI_CANON" ] \
+   && [ "$CFILE" = "$SI_CANON" ]; then
+  jq -cn --arg r "[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}' \
+    2>/dev/null \
+    || printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요."}}\n'
+  exit 0
+fi
+
 # 2) L0/L1 분류 (상태검증보다 먼저 — L0면 상태검증 없이 통과). **기본 L1 — 불변식 반전(task-03b 재설계)**:
 #    classify_l0l1 이 두 양성경로(A repo내 순수문서 / B repo-밖 안전영역)에서만 rc 0(L0), 그 외 전부 rc 1(L1).
 #    단 원본 .git 컴포넌트(GIT_COMPONENT=1)면 classify 결과를 무시하고 L1(#2).

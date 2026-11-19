@@ -1636,3 +1636,115 @@ test_dr_ad_25() { # [v4.5 보충 30] decisions.md 를 읽을 수 없음(200) →
   local a b c; a=$(dr_lineno "$DECF" '(toolu_r0)'); b=$(dr_lineno "$DECF" '(toolu_rr)'); c=$(dr_lineno "$DECF" '(toolu_r2)')
   { [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ] && [ "$a" -lt "$b" ] && [ "$b" -lt "$c" ]; } || fail ad25-order
 }
+
+# ══ 계약 보충 4 — 33항: 고정 지시 파일 쓰기는 승인 창(permissionDecision "ask") ═══════════
+DR_ASK_REASON='[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요.'
+dr_si_path() { printf '%s/.claude/standing-instructions.md' "$HOME_DIR"; }
+dr_gate_out() { run_hook_stdout gate-guard.sh "$(dr_tool "$1" "$2" "$3" "${4:-}")"; }   # <event> <tool> <file> [agent_id]
+dr_assert_ask() { # <assert-id> — exit 0 + stdout JSON 의 hookSpecificOutput 이 계약대로
+  assert_exit 0 "$1-exit"
+  printf '%s' "$HOOK_STDOUT" | jq -e --arg r "$DR_ASK_REASON" '
+      .hookSpecificOutput.hookEventName == "PreToolUse"
+      and .hookSpecificOutput.permissionDecision == "ask"
+      and (.hookSpecificOutput.permissionDecisionReason | type == "string" and contains($r))' >/dev/null 2>&1 \
+    || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 200)"; fail "$1-json"; }
+}
+dr_assert_no_ask() { # <want-exit> <assert-id>
+  assert_exit "$1" "$2-exit"
+  assert_stdout_no_match 'permissionDecision' "$2-no-ask"
+}
+
+test_dr_sa_01() { # [v4.5 보충 33] Edit·Write·MultiEdit 각각 고정 지시 파일 → ask (파일·~/.claude 아직 없음 = 새 Write 포함)
+  write_state auto
+  [ ! -e "$HOME_DIR/.claude" ] || fail sa01-precondition-no-dir
+  local t
+  for t in Write Edit MultiEdit; do
+    dr_gate_out PreToolUse "$t" "$(dr_si_path)"
+    dr_assert_ask "sa01-$t-nofile"
+  done
+  dr_standing '한국어로 답한다\n'
+  for t in Write Edit MultiEdit; do
+    dr_gate_out PreToolUse "$t" "$(dr_si_path)"
+    dr_assert_ask "sa01-$t-exists"
+  done
+}
+
+test_dr_sa_02() { # [v4.5 보충 33] 상태 무관 ask — SPEC=0/UNSET · SPEC=1/auto · lazy(PENDING 0·1) · 상태파일 없음
+  dr_standing '지시\n'
+  local st
+  for st in "UNSET 0 0 0" "auto 0 0 1" "lazy 0 0 1" "lazy 1 0 1"; do
+    # shellcheck disable=SC2086
+    write_state $st
+    dr_gate_out PreToolUse Edit "$(dr_si_path)"
+    dr_assert_ask "sa02-$(printf '%s' "$st" | tr ' ' '_')"
+  done
+  rm -f "$STATE"
+  dr_gate_out PreToolUse Write "$(dr_si_path)"
+  dr_assert_ask sa02-nostate
+}
+
+test_dr_sa_03() { # [v4.5 보충 33] agent_id 있는 호출도 ask
+  write_state UNSET 0 0 0
+  dr_standing '지시\n'
+  dr_gate_out PreToolUse Edit "$(dr_si_path)" agent-33
+  dr_assert_ask sa03-subagent-edit
+  write_state auto
+  dr_gate_out PreToolUse Write "$(dr_si_path)" agent-34
+  dr_assert_ask sa03-subagent-write
+}
+
+test_dr_sa_04() { # [v4.5 보충 33] 심링크를 거쳐 닿는 경로도 ask — 디렉토리 심링크(파일 없음·있음)·파일 심링크
+  write_state auto
+  mkdir -p "$HOME_DIR/.claude"
+  ln -s "$HOME_DIR/.claude" "$SANDBOX/cl-link"
+  dr_gate_out PreToolUse Write "$SANDBOX/cl-link/standing-instructions.md"
+  dr_assert_ask sa04-dirlink-nofile
+  dr_standing '지시\n'
+  dr_gate_out PreToolUse Edit "$SANDBOX/cl-link/standing-instructions.md"
+  dr_assert_ask sa04-dirlink-exists
+  ln -s "$(dr_si_path)" "$SANDBOX/si-file-link.md"
+  dr_gate_out PreToolUse Edit "$SANDBOX/si-file-link.md"
+  dr_assert_ask sa04-filelink
+  dr_gate_out PreToolUse Write "$HOME_DIR/.claude/./sub/../standing-instructions.md"
+  dr_assert_ask sa04-dotdot
+}
+
+test_dr_sa_05() { # [v4.5 보충 33] 대조: 같은 폴더 다른 파일·이름만 같은 다른 위치 → ask 없음, 종전 판정 그대로
+  mkdir -p "$HOME_DIR/.claude" "$REPO/docs"
+  write_state UNSET 0 0 0                                    # SPEC=0 — L1 이면 종전대로 exit 2
+  dr_gate_out PreToolUse Write "$HOME_DIR/.claude/other.md"
+  dr_assert_no_ask 0 sa05-spec0-other-in-claude              # ~/.claude 비배포 파일 = L0
+  dr_gate_out PreToolUse Write "$REPO/standing-instructions.md"
+  dr_assert_no_ask 2 sa05-spec0-repo-root                    # repo 내 비-docs = L1 → SPEC=0 차단
+  dr_gate_out PreToolUse Write "$REPO/docs/standing-instructions.md"
+  dr_assert_no_ask 0 sa05-spec0-repo-docs                    # docs = L0
+  write_state auto
+  dr_gate_out PreToolUse Write "$HOME_DIR/.claude/other.md"
+  dr_assert_no_ask 0 sa05-auto-other-in-claude
+  dr_gate_out PreToolUse Edit "$REPO/standing-instructions.md"
+  dr_assert_no_ask 0 sa05-auto-repo-root
+  dr_gate_out PreToolUse Edit "$REPO/docs/standing-instructions.md"
+  dr_assert_no_ask 0 sa05-auto-repo-docs
+}
+
+test_dr_sa_06() { # [v4.5 보충 33] PostToolUse·Bash 호출에는 ask 없음 (Bash 는 종전 알림 범위 — 한계)
+  dr_standing '지시\n'
+  write_state auto
+  dr_gate_out PostToolUse Edit "$(dr_si_path)"
+  dr_assert_no_ask 0 sa06-post-edit
+  dr_gate_out PostToolUse Write "$(dr_si_path)"
+  dr_assert_no_ask 0 sa06-post-write
+  run_hook_stdout gate-guard.sh "$(json_bash "printf 'x\n' > $(dr_si_path)")"
+  dr_assert_no_ask 0 sa06-bash-auto
+  write_state UNSET 0 0 0
+  run_hook_stdout gate-guard.sh "$(json_bash "printf 'x\n' >> $(dr_si_path)")"
+  dr_assert_no_ask 0 sa06-bash-spec0
+}
+
+test_dr_sa_07() { # [v4.5 보충 33] 상태파일 하드 거부가 여전히 먼저 — 상태파일 Edit 는 exit 2·ask 없음
+  write_state auto
+  dr_gate_out PreToolUse Edit "$STATE"
+  dr_assert_no_ask 2 sa07-statefile-denied
+  run_hook gate-guard.sh "$(dr_tool PreToolUse Edit "$STATE")"
+  assert_stderr_match '상태파일은 훅 소유' sa07-statefile-msg
+}
