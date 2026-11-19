@@ -132,16 +132,16 @@ deploy_smoke() {
   fi
   rm -rf "$scwd"
 
-  # (c) 훅 테스트 러너(있으면) — fixture 회귀 전체(수십 초 소요 가능). `timeout` 이 있으면 상한을 걸어
+  # (c) 훅 테스트 러너(있으면) — fixture 회귀 전체(평소 3~4분, 머신 부하가 높으면 7분 — 2026-11-19 실측: 361개가 부하 14에서 400초). `timeout` 이 있으면 상한을 걸어
   #     **진짜 hang 을 smoke 실패로 수렴**시킨다(unbounded 면 hang 이 D9 복원을 영영 못 밟음). 없으면 무제한 실행.
   if [ -f "$DEST/hooks/tests/run.sh" ]; then
     if command -v timeout >/dev/null 2>&1; then
-      out=$(timeout 300 bash "$DEST/hooks/tests/run.sh" 2>&1); rc=$?
+      out=$(timeout 900 bash "$DEST/hooks/tests/run.sh" 2>&1); rc=$?
     else
       out=$(bash "$DEST/hooks/tests/run.sh" 2>&1); rc=$?
     fi
     if [ "$rc" != "0" ]; then
-      [ "$rc" = "124" ] && echo "[smoke] hooks/tests/run.sh 시간초과(300s) — hang 으로 판정." >&2 \
+      [ "$rc" = "124" ] && echo "[smoke] hooks/tests/run.sh 시간초과(900s) — hang 으로 판정." >&2 \
                         || echo "[smoke] hooks/tests/run.sh 실패(exit=$rc):" >&2
       printf '%s\n' "$out" | tail -15 >&2; return 1
     fi
