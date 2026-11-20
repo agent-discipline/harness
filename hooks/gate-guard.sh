@@ -384,7 +384,7 @@ if [ "$SPEC" != "1" ]; then
   if [ "$EVENT" = "PreToolUse" ]; then
     cat >&2 <<MSG
 [gate-guard] 요구사항 명세 미합의(SPEC=0) — L1(실행물 변경) 진입 차단.
-복구 순서: ① 전수 인터뷰 → requirement-spec.md 작성(필수 6칸 — 빈 칸 금지, templates/requirement-spec.md)
+복구 순서: ① 새 작업 폴더에 log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md 작성(필수 6칸 — 빈 칸 금지, templates/requirement-spec.md)
   → ② 사용자 합의 답변을 받으면: bash ~/.claude/hooks/set-state.sh spec-approved .claude/lazymode/$SESSION_ID
   → ③ 자율성 2택(auto/lazy)을 물어 기록 → ④ 이 도구 호출 재시도.
 긴급 수정(장애 대응)은 유일 예외: 새 작업 폴더에 log.md 생성 → 사용자 긴급 확인(+불가역 데이터 턱) →

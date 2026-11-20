@@ -102,7 +102,7 @@ dr_legacy_init() { # fixture 사본 → $SANDBOX/legacy (SCRIPT_DIR 기준 state
   grep -qxF -- "$DR_MSG_NEW_1" "$LEG/session-mode-guard.sh" || fail legacy-msg-line-not-patched
 }
 DR_MSG_OLD_1='  ① 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의'
-DR_MSG_NEW_1='  ① 새 작업 폴더에 log.md 생성 → 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의'
+DR_MSG_NEW_1='  ① 새 작업 폴더에 log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의'
 # 보충 13·27: reread-track 를 한 번 실행해 이 세션의 표시 파일(<state_dir>/<sid>.reread-seen)이 생기게 한다(대상 아닌 Read)
 dr_seen() { # <assert-id>
   run_hook reread-track.sh "$(dr_read "$REPO/README.md")"
@@ -1822,6 +1822,13 @@ test_dr_ms_01() { # [v4.6 I3] 세션 시작 안내문 ①이 "새 작업 폴더�
   if grep -qxF -- "$DR_MSG_OLD_1" "$SANDBOX/new"; then fail ms01-old-order-line-gone; fi
 }
 
+test_dr_ms_02() { # [v4.6 I3] gate-guard SPEC=0 차단 안내의 복구 순서가 세션 시작 안내문과 같다(log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md)
+  dr_setup_task UNSET 0 0 0
+  dr_l1
+  assert_exit 2 ms02-spec0-exit
+  assert_stderr_match '복구 순서: ① 새 작업 폴더에 log\.md 생성\(Write 도구로\) → 전수 인터뷰 → requirement-spec\.md 작성' ms02-recovery-order
+}
+
 DR_LI_PREFIX='[게이트] 직전 세션의 작업 폴더에 커밋되지 않은 변경이 있습니다: '
 dr_li_line() { printf '%s%s — 사용자에게 이어갈지 물으세요(이어가기 / 기록만 커밋 / 되돌리기).' "$DR_LI_PREFIX" "$1"; }
 dr_prev() { # <sid> <TASK_PATH 줄 값|-(줄 없음)> <몇 초 전> — 다른 세션의 상태파일(mtime 지정)
@@ -1871,9 +1878,16 @@ test_dr_li_01() { # [v4.6 I4] 직전 세션 작업 폴더에 변경 있음 → �
   dr_legacy_init
   local d; d=$(dr_task_dir prev1)
   dr_prev prevA-1 "$d" 100
+  # 추적 파일 하나를 두고 mtime 만 바꿔, 기본 git status 라면 index 를 다시 쓸 조건을 만든다(.git/index 불변 확인용)
+  printf 'tracked\n' > "$d/tracked.md"
+  git -C "$REPO" -c user.email=t@test -c user.name=t add -- "$d/tracked.md" >/dev/null 2>&1
+  git -C "$REPO" -c user.email=t@test -c user.name=t commit -qm tracked >/dev/null 2>&1
   git -C "$REPO" status --porcelain=v1 -uall -- docs > "$SANDBOX/st.before"
   sha256sum "$d/log.md" > "$SANDBOX/sum.before"
+  touch -d "@$(( $(dr_now) - 3600 ))" "$d/tracked.md"
+  sha256sum "$REPO/.git/index" > "$SANDBOX/idx.before"
   dr_li_pair "$SANDBOX/o"
+  sha256sum -c --quiet "$SANDBOX/idx.before" >/dev/null 2>&1 || fail li01-git-index-unchanged
   dr_is_prefix "$SANDBOX/o.old" "$SANDBOX/o.new" || fail li01-legacy-prefix
   tail -c +"$(( $(wc -c < "$SANDBOX/o.old") + 1 ))" "$SANDBOX/o.new" > "$SANDBOX/o.rest"
   [ "$(head -n 1 "$SANDBOX/o.rest")" = "$(dr_li_line "$d")" ] \

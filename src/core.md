@@ -18,14 +18,14 @@
 
 ### 인터뷰 → 명세서 (진입 게이트)
 
-- 요구사항 수신 → **새 작업 폴더의 `log.md`를 먼저 만든다**(질문·답이 그 폴더 `decisions.md`에 남게 — 생성 = 아래 리셋) → **전수 질문**(많아도 좋다 — 사전 코드 탐색은 워커 위임 가능하나 **질문·답변·명세 작성은 메인이 직접**) → 사용자 전부 응답(자유 서술 포함) → `requirement-spec.md` 작성(`templates/requirement-spec.md`).
+- 요구사항 수신 → **새 작업 폴더의 `log.md`를 먼저 만든다**(Write 도구로 — 질문·답이 그 폴더 `decisions.md`에 남게 — 생성 = 아래 리셋) → **전수 질문**(많아도 좋다 — 사전 코드 탐색은 워커 위임 가능하나 **질문·답변·명세 작성은 메인이 직접**) → 사용자 전부 응답(자유 서술 포함) → `requirement-spec.md` 작성(`templates/requirement-spec.md`).
 - **필수 6칸**: ①목표·대상 ②경계·불변식 ③기준소스 ④금지영역 ⑤검증 방법 ⑥stakes(§3) — **한 칸이라도 비면 아직 L0**. "일단 구현하면서 정하자" 금지 — 모호하면 AskUserQuestion. + 자율성(auto/lazy) + **load-bearing 가정 1~2개**(예측형 실패모드 나열은 하지 않는다 — 날조 방지, 2개월 실측).
 - 사용자가 이미 명시한 칸은 재질문하지 않는다. 자명한 작업은 칸당 1행 축약.
 
 ### 게이트 상태 전이 (훅 계약 — 상태파일 `.claude/lazymode/<session_id>`, SCHEMA=4)
 
 ```
-정상: 새 작업 폴더에 log.md 생성(리셋 → UNSET) → 인터뷰 ─(명세 합의 → set-state 기록)→ SPEC=1 ─(auto/lazy 2택)→ MODE ─→ L1 허용
+정상: 새 작업 폴더에 log.md 생성(**Write 도구로** — 리셋 → UNSET) → 인터뷰 ─(명세 합의 → set-state 기록)→ SPEC=1 ─(auto/lazy 2택)→ MODE ─→ L1 허용
 긴급: 새 작업 폴더에 log.md 생성(**Write 도구로** — 훅 관측 경로·리셋 발동) → 긴급 확인 → set-state가 MODE=auto·SPEC=1·DEBT=1 동시 기록 → L1
 ```
 

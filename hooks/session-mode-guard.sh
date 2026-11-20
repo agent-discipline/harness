@@ -113,7 +113,7 @@ cat <<MSG
 [게이트] 활성. 현재 상태: MODE=${CURRENT:-UNSET}. 세션 상태파일: .claude/lazymode/$SESSION_ID
 ★ 지금(세션 시작) 게이트 질문을 하지 마세요. 탐색·토론·리서치·분석(L0)은 자유 — docs/** 기록 포함.
 **실행물을 만들거나 바꾸려는 순간(L1)** 게이트가 발동합니다 (core v4 §1):
-  ① 새 작업 폴더에 log.md 생성 → 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의
+  ① 새 작업 폴더에 log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의
      → bash ~/.claude/hooks/set-state.sh spec-approved .claude/lazymode/$SESSION_ID
   ② 자율성 2택 질문 — auto(합의 후 자율 실행, 기본 권장) / lazy(매 diff 이해 게이트 — 학습·OSS)
      → bash ~/.claude/hooks/set-state.sh mode <선택> .claude/lazymode/$SESSION_ID
@@ -142,7 +142,7 @@ if [ "$SOURCE" = "startup" ]; then
     _PREV_TP=$(state_get "$STATE_DIR/$_PREV" TASK_PATH)
     if [ -n "$_PREV_TP" ] && [ -d "$_PREV_TP" ]; then
       _PREV_ST=""
-      _PREV_ST=$(timeout 2 env -u GIT_DIR -u GIT_WORK_TREE git -C "$_PREV_TP" status --porcelain -- . 2>/dev/null) || _PREV_ST=""
+      _PREV_ST=$(timeout 2 env -u GIT_DIR -u GIT_WORK_TREE git --no-optional-locks -C "$_PREV_TP" status --porcelain -- . 2>/dev/null) || _PREV_ST=""
       if [ -n "$_PREV_ST" ]; then
         echo "[게이트] 직전 세션의 작업 폴더에 커밋되지 않은 변경이 있습니다: $_PREV_TP — 사용자에게 이어갈지 물으세요(이어가기 / 기록만 커밋 / 되돌리기)."
       fi
