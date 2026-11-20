@@ -127,7 +127,7 @@
 | `playbooks/open-source.md` | 외부 OSS 기여·PR |
 | `playbooks/design-taste.md` | 리뷰 설계 렌즈·리팩토링 그룹핑 대화·새 파일 구조/이름 설계 |
 | `playbooks/issue-archive.md` | L1 사이클 마감(검증 완료 후) — CS 이슈 아카이브 |
-| `playbooks/writing/ROUTING.md` | 사람이 읽을 문서(README·ADR·해설·보고·커밋·PR 본문)를 쓰거나 고칠 때 · 작업 기록(명세서·log·NEXT)을 쓸 때 · 문서에 그림을 넣을 때 — 표에서 읽을 문서를 찾는다(공통 원칙·낱말 사례 표·작업 기록·그림. 사례 표 `wording-table.md`에 줄을 덧붙이는 일은 새 작업으로 보지 않는다 — 저장소 원본에 덧붙이고 다음 배포 때 반영) |
+| `playbooks/writing/ROUTING.md` | 사람이 읽을 문서(README·ADR·해설·보고·커밋·PR 본문)를 쓰거나 고칠 때 · 작업 기록(명세서·log·NEXT)을 쓸 때 · 문서에 그림을 넣을 때 — 표에서 읽을 문서를 찾는다(공통 원칙·낱말 사례 표·작업 기록·그림. 사례 표 `wording-table.md`에 줄을 덧붙이는 일은 새 작업으로 보지 않는다 — 하네스 저장소(`agent-discipline/harness`) 원본에 덧붙이고 다음 배포 때 반영. 배포본에 덧붙이면 사라진다) |
 | `templates/requirement-spec.md` | L1 진입 시 (모든 구현의 진입점) |
 | `templates/log.md` | 〃 (긴급은 log 먼저) |
 | `templates/measurement-log.md` | 측정로그 최초 생성 시 · 12열 로그에 첫 13열 행을 붙일 때 |

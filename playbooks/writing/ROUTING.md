@@ -22,7 +22,11 @@
 | README, 커밋 메시지, 이슈, PR 본문 | [principles.md](principles.md) | collaboration.md (작성 예정) |
 | 그 밖에 사람이 읽을 문서 | [principles.md](principles.md) | 해당 없음 |
 
-한국어 문서를 다 쓴 뒤에는 [wording-table.md](wording-table.md)의 왼쪽 열 낱말로 검색해 어색한 표현이 남았는지 확인한다.
+한국어 문서를 다 쓴 뒤에는 [wording-table.md](wording-table.md)의 왼쪽 열 낱말로 검색해 어색한 표현이 남았는지 확인한다. 작업 기록(명세서, log, 측정 원본)은 이 검색의 대상이 아니다.
+
+- 글을 쓴 모델에게 같은 글을 검토시키면 자기 말투를 자연스럽다고 읽는다(실측 2026-11-18). 검색은 표로 하고, 표를 키우는 검토는 사람이나 다른 모델이 한다.
+- 이미 쓴 커밋 메시지, 사용자 발언 인용, 로그 문자열은 고치지 않는다.
+- 표에 없던 어색한 낱말을 고쳤으면 표에 한 줄을 덧붙인다. 덧붙이는 곳은 하네스 저장소(`agent-discipline/harness`)의 `playbooks/writing/wording-table.md`다. `~/.claude/playbooks/`의 배포본은 배포 때마다 통째로 바뀌므로 거기에 덧붙이면 사라진다.
 
 문서에 흐름, 구조, 상태 변화, 전후 대비가 들어가면 유형과 상관없이 [diagrams.md](diagrams.md)를 함께 읽는다.
 

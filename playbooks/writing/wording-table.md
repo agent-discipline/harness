@@ -244,5 +244,5 @@
 
 - 2026-11-18: resume 저장소의 이력서와 포트폴리오(좌석 실험, 팀 프로젝트, 실무 사례 5개)를 사람이 읽는 문장 단위로 검토하며 고친 기록. 작업 기록은 resume 저장소 `docs/plans/2026-11-18/`의 `좌석사례-통합-용어정리`, `팀포트폴리오-문체정리`, `실무사례-문체정리`.
 - 2026-11-18: seat-reservation-lab README 재작성과 ADR 21개 용어 정리. 치환 스크립트와 기록은 그 저장소 `docs/plans/2026-11-18/readme-reader-rewrite/`. 같은 낱말이 여러 뜻으로 쓰여(대조 = 보정, 비교, 대조군, 양성 대조) 일괄 치환하지 않고 뜻이 분명한 꼴만 바꿨다.
-- 2026-11-18: agent-discipline 실험 저장소(clean-code-llm-experiment, graph-nav-experiment, compare-issue-archive)의 README, docs/adr, 결론 문서 22개. 치환 스크립트는 이 저장소 `docs/plans/2026-11-18/wording-sweep/`. need-harness-lab은 실험이 진행 중이고 문서가 에이전트 입력물이라 고치지 않았다. 하네스 정책 문서(core.md, playbooks)의 "무음", "귀속", "안전망"은 정책 변경이라 따로 모아 처리한다.
+- 2026-11-18: agent-discipline 실험 저장소(clean-code-llm-experiment, graph-nav-experiment, compare-issue-archive)의 README, docs/adr, 결론 문서 22개. 치환 스크립트는 rules 저장소 `docs/plans/2026-11-18/wording-sweep/`. need-harness-lab은 실험이 진행 중이고 문서가 에이전트 입력물이라 고치지 않았다. 하네스 정책 문서(core.md, playbooks)의 "무음", "귀속", "안전망"은 정책 변경이라 따로 모아 처리한다.
 - 2026-11-18: study-note 본문(진행 중). 탐침 -> probe, 격벽 -> 벌크헤드, 꼬리 지연 -> 테일 레이턴시, 문턱 -> 임계값, 어긋남 -> 불일치, 기준선 -> 베이스라인(뜻을 갈라 일부만). 치환 도구와 기록은 study-note `docs/plans/2026-11-18/wording-sweep/`.
