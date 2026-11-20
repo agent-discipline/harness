@@ -18,6 +18,8 @@
 | 11-20 16:13~16:14 | task 04 — rules 저장소 브랜치 `chore/move-writing-to-harness`, 커밋 `b3cb778` | `writing/`·`ROUTING.md` 삭제, README "현재 상태"를 보류 상태와 새 위치 안내로. 기록은 rules `docs/plans/2026-11-20/move-writing-to-harness/` |
 | 11-20 16:13 | 관측 — 게이트 상태는 저장소마다 따로 | rules의 README Edit이 SPEC=0으로 막힘(하네스에서 기록한 합의는 하네스 쪽 상태 디렉토리에만 있음). 한 작업이 두 저장소를 고칠 때는 저장소마다 작업 폴더와 상태 기록이 필요하다. rules에 작업 폴더를 만들고 같은 합의를 옮겨 적어 진행. 같은 순간에 낸 rules 커밋이 README 없이 만들어져 amend로 고침 |
 | 11-20 16:15 | 시각 보정(메인) | 16:03 뒤의 행들을 또 시계를 보지 않고 적어 몇 분씩 늦게(일부는 아직 오지 않은 시각으로) 적었다. 커밋 시각으로 고쳤다. 같은 실수가 오늘 두 번째다 — 행을 적기 전에 `date`를 먼저 본다 |
+| 11-20 17:24 | 사용자 확인(질문 도구 "고친다") → `~/.claude/CLAUDE.md` 11행의 소스 저장소 이름을 `claude-code-harness`에서 `agent-discipline/harness`로 | 백업 `~/.claude/CLAUDE.md.bak-2026-11-20`, 차이는 그 한 줄 |
+| 11-20 17:24 | 사용자 확인("둘 다 push + PR + 병합") | 하네스를 먼저 병합하고 rules를 병합 |
 
 ## 리뷰 ledger (中↑ — 듀얼 리뷰가 돈 작업 필수)
 
