@@ -159,12 +159,11 @@ v4.5의 고정 지시 재주입(아래 "압축 뒤 재독 · 선택 질문 기�
 │   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT)·압축 뒤 미독·고정 지시(~/.claude/standing-instructions.md) 재주입
 │   ├── git-guard.sh           #   push 네이티브 승인(ask) 위임 + 커밋/gh 발행 attribution 하드 차단
 │   ├── codex-scan.sh          #   codex 호출 명령의 시크릿 backstop
-│   ├── capture-prompt.sh      #   현재 턴 프롬프트 사이드카(.prompt/.turn — 상태 디렉토리에 기록, 현 소비자 없음·이월)
 │   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(.events — InstructionsLoaded·ConfigChange·SubagentStop)
 │   ├── capture-decision.sh    #   선택 질문(AskUserQuestion)의 질문·선택지·답 → 작업 폴더 decisions.md (작업 폴더 전에는 .decisions 사이드카에 쌓았다 옮김)
 │   ├── reread-track.sh        #   작업 기록(spec·log·decisions.md) Read 시각 → .reread 사이드카 (압축 뒤 재독 판정)
 │   ├── deploy.sh              #   manifest diff → 백업+원자 교체 → stale 최상위 파일 정리 → smoke (실패 시 D9 자동 복원)
-│   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증, 258 tests)
+│   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증)
 └── docs/                      # measurement-log + 작업 기록 (L0)
 ```
 
@@ -193,7 +192,7 @@ bash hooks/tests/run.sh          # 훅 테스트
 ```
 
 - 글로벌 `~/.claude/CLAUDE.md`(부트스트랩)가 core.md 를 import 한다 — 이 repo 로컬 CLAUDE.md 는 포인터만(이중 주입 방지, 상세: CLAUDE.md 헤더).
-- 훅 등록(`~/.claude/settings.json`)과 글로벌 CLAUDE.md 는 배포 제외(역할 분기) — 수동 관리. **v3→v4 마이그레이션**: 배포와 같은 작업 단위로 settings.json 의 `scope-guard.sh`·`template-guard.sh` PostToolUse 등록 2행을 제거할 것(파일이 배포로 사라져 유령 참조가 됨 — 절차: `docs/plans/2026-07-21/harness-v4-slimdown/settings-json-plan.md`).
+- 훅 등록(`~/.claude/settings.json`)과 글로벌 CLAUDE.md 는 배포 제외(역할 분기) — 수동 관리.
 
 ## 이력
 

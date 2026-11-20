@@ -1211,14 +1211,14 @@ test_dr_cm_04() { # [v4.5 I8] task-mode-guard 리셋은 종전대로(새 작업 
 test_dr_pv_01() { # [v4.5] 자유 프롬프트 원문은 사이드카(.decisions)·decisions.md 에 쌓이지 않음
   write_state auto
   local secret='자유프롬프트원문-XYZ-7781'
-  run_hook capture-prompt.sh "$(json_prompt "$secret 이걸로 진행해")"
+  write_sidecar 1 "$(date +%s)" "$secret 이걸로 진행해"   # 옛 capture-prompt 가 남긴 .prompt 잔재(2026-11-20 훅 삭제 — 파일은 30일 정리까지 남는다)
   run_hook_stdout reinject-mode.sh "$(json_prompt "$secret 이걸로 진행해")"
   run_hook capture-decision.sh "$(dr_ask1 toolu_pv1 '보호 질문?' 'PV' 'A안')"
   [ -f "$STATE_DIR/$SID.decisions" ] || fail pv01-sidecar-precondition
   assert_file_not_contains "$STATE_DIR/$SID.decisions" "$secret" pv01-sidecar-no-prompt
   TP=$(realpath -m -- "$REPO/docs/plans/2026-11-19/t1"); mkdir -p "$TP"
   echo s > "$TP/requirement-spec.md"; echo l > "$TP/log.md"; echo "TASK_PATH=$TP" >> "$STATE"
-  run_hook capture-prompt.sh "$(json_prompt "$secret 두번째")"
+  write_sidecar 2 "$(date +%s)" "$secret 두번째"
   run_hook capture-decision.sh "$(dr_ask1 toolu_pv2 '보호 질문2?' 'PV' 'B안')"
   [ -f "$TP/decisions.md" ] || fail pv01-decisions-precondition
   assert_file_not_contains "$TP/decisions.md" "$secret" pv01-decisions-no-prompt

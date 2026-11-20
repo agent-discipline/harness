@@ -1,6 +1,7 @@
 # cwd-resolution.sh — gate-cwd-resolution 케이스 (blind, 계약 기반)
 #   A. state_resolve_dir 단위(state-lib 신설) — 조상 앵커·심링크/타 sid 제외·$HOME 제외·비절대/빈 sid·성분 상한
-#   B. 훅 적용 — gate-guard 사고재현(조상 상태로 통과·sub 미시드)·회귀 시드·capture-prompt/detect-layer 사이드카 조상 기록
+#   B. 훅 적용 — gate-guard 사고재현(조상 상태로 통과·sub 미시드)·회귀 시드·detect-layer 사이드카 조상 기록
+#      (2026-11-20 삭제 매핑: cr_12 capture-prompt 조상 기록 → 같은 계약을 cr_13 이 detect-layer 로 확인)
 #   C. gate-guard 상태 보호 — lazymode 전체(.events 포함) 하드거부·Bash 차단 유지(loop1 P0: .events 예외 철회)
 # 설계: blind 워커(구현·state-lib 미열람 계약), 통합: 메인.
 
@@ -115,19 +116,6 @@ test_cr_11() { # [회귀] 조상에 상태 전무 + cwd=하위 → 워크트리 
   assert_exit 2 no-ancestor-seed-block
   assert_file_contains "$REPO/.claude/lazymode/$SID" "MODE=UNSET" no-ancestor-root-unset
   [ ! -e "$REPO/sub/.claude" ] || fail no-ancestor-sub-not-seeded
-}
-
-test_cr_12() { # capture-prompt: 조상 상태 존재 시 .prompt·.turn 사이드카가 조상 lazymode 에 기록(cwd=sub 여도)
-  write_state auto
-  mkdir -p "$REPO/sub"
-  local j; j=$(jq -cn --arg p "hello world" --arg c "$REPO/sub" --arg s "$SID" \
-    '{hook_event_name:"UserPromptSubmit", prompt:$p, cwd:$c, session_id:$s}')
-  run_hook capture-prompt.sh "$j"
-  assert_exit 0 capture-exit
-  [ -f "$REPO/.claude/lazymode/$SID.prompt" ] || fail capture-prompt-in-ancestor
-  assert_file_contains "$REPO/.claude/lazymode/$SID.prompt" "hello world" capture-prompt-body
-  [ -f "$REPO/.claude/lazymode/$SID.turn" ] || fail capture-turn-in-ancestor
-  [ ! -e "$REPO/sub/.claude" ] || fail capture-no-sub-sidecar
 }
 
 test_cr_13() { # detect-layer(ConfigChange): .events 사이드카가 조상 lazymode 에 기록(cwd=sub 여도)
