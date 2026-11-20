@@ -117,7 +117,7 @@
 - 종료 시: `docs/measurement-log.md` 1행(<1분, 워커 모델·토큰 합 포함 — 완료 알림 usage) + **완료 요약**(핵심 diff before/after 스니펫 — **실파일에서 복사**, 메모리 재현·placeholder 금지, 조사·작성은 Opus 워커 위임).
 - **사이클 마감 2단 (검증 완료 *후* — '검증 완료' = §4 안전선+stakes 리뷰. 병합·push 전 작업 브랜치의 docs 커밋으로, 병합이 통제 밖이어도 이 시점. 병합 뒤 검증(배포 smoke 등) 결과는 후속 docs 브랜치 커밋→병합으로 NEXT에 반영 · 긴급은 DEBT=0 후 · 사전 예측 대신 사후 전망 · ②의 study-note 쓰기는 spec 범위 확인·금지영역이 우선 — 못 쓰면 보류 경로(issue-archive §1))**: ①프로젝트 `docs/plans/NEXT.md`(롤링 단일 문서, `templates/next.md`) 갱신 — 다음 작업 후보·발생 가능 문제·방법론 비교·대처·우선순위(관측 신호 기반만 — 자명 작업은 1행. NEXT 항목 착수도 새 작업 폴더 spec부터 — §1) ②log의 **CS 이슈**를 study-note `issue/`에 아카이브(`playbooks/issue-archive.md` — 0건이면 log 1행).
 
-## 8. 조건부 문서 (트리거 시에만 — 각 ≤80줄·규칙은 한 곳에만)
+## 8. 조건부 문서 (트리거 시에만 — 각 ≤80줄(`writing/`은 예외)·규칙은 한 곳에만)
 
 | 문서 | 트리거 |
 |------|--------|
@@ -127,7 +127,7 @@
 | `playbooks/open-source.md` | 외부 OSS 기여·PR |
 | `playbooks/design-taste.md` | 리뷰 설계 렌즈·리팩토링 그룹핑 대화·새 파일 구조/이름 설계 |
 | `playbooks/issue-archive.md` | L1 사이클 마감(검증 완료 후) — CS 이슈 아카이브 |
-| `playbooks/korean-wording.md` | 사람이 읽을 한국어 문서(README·ADR 본문·해설·보고)를 쓰거나 고칠 때 — 지어낸 말·직역·보고서 말투 (작업 원본인 명세서·log·측정 원본은 제외) |
+| `playbooks/writing/ROUTING.md` | 사람이 읽을 문서(README·ADR·해설·보고·커밋·PR 본문)를 쓰거나 고칠 때 · 작업 기록(명세서·log·NEXT)을 쓸 때 · 문서에 그림을 넣을 때 — 표에서 읽을 문서를 찾는다(공통 원칙·낱말 사례 표·작업 기록·그림. 사례 표 `wording-table.md`에 줄을 덧붙이는 일은 새 작업으로 보지 않는다 — 저장소 원본에 덧붙이고 다음 배포 때 반영) |
 | `templates/requirement-spec.md` | L1 진입 시 (모든 구현의 진입점) |
 | `templates/log.md` | 〃 (긴급은 log 먼저) |
 | `templates/measurement-log.md` | 측정로그 최초 생성 시 · 12열 로그에 첫 13열 행을 붙일 때 |
@@ -138,6 +138,6 @@
 > v3→v4 (2026-07-21): 모드 5종→auto/lazy+긴급 규칙 · 6칸 게이트→인터뷰→명세서(SPEC 상태 관측) · 문서 4종→spec+log 2파일 · dimensions 폐지 · playbook 12→5 — 근거·리뷰 ledger = `docs/plans/2026-07-21/harness-v4-slimdown/`. 상세 이력 = `HISTORY.md`.
 > v4.2 (2026-09-24): §4 구현 사다리(Ponytail) · 설계 선검증 조건화 · §7 사이클 마감 2단(NEXT.md·issue-archive) — `docs/plans/2026-09-24/ponytail-next-issue-archive/`.
 > v4.3 (2026-11-06): §5 탐색 위임 `explorer`(Sonnet·읽기 전용, 목적 = 컨텍스트 보호) · §0.5 예외(explorer 도구 제한)·§1 L1에 agents/ · §4 이름 권장 1구·§7 워커 토큰(측정 로그 13열)·§8 design-taste 트리거 — 실측(README "실측" 절) · `docs/plans/2026-11-06/harness-v4-3/`(전신 `2026-11-02/agent-search-findings/`).
-> v4.4 (2026-11-18): §8 korean-wording 트리거(한국어 문서의 낱말 — 정본은 rules 저장소 `writing/`) — `docs/plans/2026-11-18/korean-wording-playbook/`.
+> v4.4 (2026-11-18): §8 korean-wording 트리거(한국어 문서의 낱말 — 정본은 rules 저장소 `writing/`) — `docs/plans/2026-11-18/korean-wording-playbook/`. → v4.7 (2026-11-20): 글쓰기 규칙 전체를 `playbooks/writing/`으로 옮기고 요약본 삭제 — `docs/plans/2026-11-20/writing-rules-builtin/`.
 > v4.5 (2026-11-19): 선택 질문 아카이브(`decisions.md`)·압축 뒤 재독 강제·고정 지시 재주입 — `docs/plans/2026-11-19/decision-archive-compact-reread/`.
 > v4.6 (2026-11-20): 재독은 전체 Read만 인정 · 새 작업은 log.md 먼저 → 인터뷰 · 세션 시작 남은 기록 알림(3택) — `docs/plans/2026-11-20/reread-full-read-and-session-leftover/`.

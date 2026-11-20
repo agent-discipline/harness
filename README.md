@@ -142,7 +142,8 @@ v4.5의 고정 지시 재주입(아래 "압축 뒤 재독 · 선택 질문 기�
 │   ├── implementation-lazymode.md  # lazy: 매 diff 주관식 이해 게이트 + 판정 워커
 │   ├── open-source.md         #   외부 OSS 기여 절차
 │   ├── design-taste.md        #   설계 취향 카탈로그 (리뷰 렌즈·그룹핑 대화)
-│   └── issue-archive.md       #   사이클 마감 — log의 CS 이슈를 study-note issue/로 추상화 아카이브(append-only·카드별 커밋)
+│   ├── issue-archive.md       #   사이클 마감 — log의 CS 이슈를 study-note issue/로 추상화 아카이브(append-only·카드별 커밋)
+│   └── writing/               #   글쓰기 규칙 — ROUTING.md(쓰려는 문서별로 읽을 문서) · principles.md(공통 원칙) · wording-table.md(낱말 사례 표) · work-records.md(작업 기록) · diagrams.md(그림)
 ├── templates/
 │   ├── requirement-spec.md    #   ★ 진입 게이트 명세서 (필수 6칸 고정 — 빈 칸 금지 + 자율성 + load-bearing 가정)
 │   ├── log.md                 #   ★ 라이브 타임라인 + 리뷰 ledger + 생략한 검증(빚 정본) + 완료 요약
