@@ -71,7 +71,7 @@
 
 ## 4. 검증
 
-- **개발 자세**: 최소 검증가능 증분(계약은 앞단 고정) · 계획에 없는 파일 수정 금지(필요해지면 멈추고 보고) · **load-bearing 가정은 착수 직후 스모크로 조기 실증**(그 위에 쌓기 전에) · 테스트 설계는 구현 diff가 아닌 spec(명세서)에서 출발 · (권장) 새 파일·식별자 이름은 담긴 도메인 개념의 낱말 그대로 — 에이전트는 파일 목록·grep 낱말로 코드를 찾는다(실측 사후 관찰 — `design-taste.md` §6).
+- **개발 자세**: 최소 검증가능 증분(계약은 앞단 고정 — 결과를 한 문장으로 말할 수 없는 작업은 task로 나누고 task마다 구현·검증·커밋을 한 바퀴 돈다: `playbooks/task-units.md`) · 계획에 없는 파일 수정 금지(필요해지면 멈추고 보고) · **load-bearing 가정은 착수 직후 스모크로 조기 실증**(그 위에 쌓기 전에) · 테스트 설계는 구현 diff가 아닌 spec(명세서)에서 출발 · (권장) 새 파일·식별자 이름은 담긴 도메인 개념의 낱말 그대로 — 에이전트는 파일 목록·grep 낱말로 코드를 찾는다(실측 사후 관찰 — `design-taste.md` §6).
 - **구현 사다리 (Ponytail 이식 — MIT, DietrichGebert/ponytail)**: 문제와 변경이 닿는 코드·실제 흐름을 **끝까지 읽은 뒤**, 처음 성립하는 단에서 멈춘다 — ①정말 필요한가(불필요·추측성이면 만들지 않고 1줄 보고) ②이 코드베이스에 이미 있나(재사용) ③stdlib ④플랫폼 기본 기능 ⑤설치된 의존성(새 의존성은 최후 — 단 보안·암호·파서·인증은 검증된 라이브러리가 자작보다 우선) ⑥한 줄 ⑦그제야 동작하는 최소 코드. 요청 없는 추상화·보일러플레이트·'나중용' 스캐폴딩 금지, 삭제>추가, 같은 크기면 엣지케이스에 맞는 쪽. **버그는 근본 원인에서** — 고칠 함수의 호출처를 전수 grep해 공유 지점에서 1회(공유 지점이 계획 밖 파일이면 위 '멈추고 보고'가 우선 + §3 승격 판정). 알려진 상한이 있는 의도적 단순화는 `ponytail:` 주석(상한·업그레이드 경로 — 외부 OSS·회사 repo는 그 repo 주석 관례 우선). '삭제>추가'는 이번 변경 범위 안에서만(계획 밖 기존 코드 삭제는 §6). **게으름 비적용**: 문제 이해·신뢰경계 입력 검증·데이터 손실 방지·**실패를 드러내기**(에러 전파·조용한 실패 방지·운영 관측)·보안·접근성·명시 요청(spec 합의 항목 포함)·테스트와 검증(§4 안전선·강도표 그대로).
 - **머지 전 최소 안전선 (stakes 무관 — 긴급은 ①만 즉시, 나머지 빚)**: ①스모크 — 변경 경로를 실제로 실행해 확인 ②테스트 실행 — 기존 테스트+불변식 최소 1개 직접 검증(불가 시 사유 기록) ③diff self-review — 의도 외 변경 없나 ④rollback/forward-fix 판단 ⑤public contract 영향(API·DB 스키마·이벤트) ⑥반증 질문 1회 — 다른 호출 경로? 빈·중복·오래된 데이터? 권한 없는 사용자? 테스트가 실패모드를 재현하나?
 - **"테스트 통과" ≠ "검증 완료"** — 중간↑는 실행 플로우 디버깅. **그린 위장 점검**: 테스트가 계약을 실검증하나 · fail-open 골든 · exit 마스킹(`| tail` 류) 없나.
@@ -79,7 +79,7 @@
 - ★ **[구현 검증] 이연 (설계 문서 한정)**: 근거가 구현 접촉에만 있는 판정(수치·비용·형식 세부)은 `[구현 검증]` 태그로 **이연할 수 있다** — 각 문서 태그 + **그 프로젝트의 중앙 대장**(`implementation-verification.md` 류 — 문서와 다른 repo면 그 repo의 커밋)에 등재해야 유효하다(조용한 이연 금지). 판별 가이드: *"이 답이 틀렸다는 걸 문서만 읽고 알 수 있나?"* — 알 수 있으면 문서에서 판정한다(이연 남용 방지).
 - 같은 접근 2회 실패 시 3번째 전 사용자 확인.
 
-### 강도표
+### 강도표 (작업을 task로 나눴으면 task마다 매기고 task마다 검증한다 — `playbooks/task-units.md` §3)
 
 | | 낮음 | 중간 | 높음 |
 |---|------|------|------|
@@ -101,8 +101,8 @@
 
 - **기준소스·접속**: 기준소스는 명세서 칸③. DB·외부 접속정보는 사용자에게 요청 — credential 파일시스템 grep 금지.
 - **스코프**: 문서 작업과 구현 작업을 섞지 않는다. code 커밋에 docs 자동 포함 금지. 포팅·이관에서 원본 삭제·재구성은 명시 요청 시만. 검증 과정 출처(codex·리뷰)는 커밋·주석에 기재 금지(log ledger 소유).
-- **git**: **push는 사용자 확인 후**(git-guard가 `ask` 반환 — 네이티브 승인 UI, 추측 push 금지). 커밋은 승인 게이트 없음 — 단 AI attribution(`Co-Authored-By: Claude`·`Generated with … Claude/Codex` 등)은 커밋 메시지·**모든 발행 본문(PR/이슈/코멘트/릴리즈 등) 금지**. 훅 하드 차단 범위는 `gh pr|issue create/edit/comment/merge/review/close/reopen` 인라인 본문까지 — 파일 경유 본문(`--body-file`)·그 외 gh 표면(release·api 등)·워커 내부 호출은 훅이 못 보므로 절차 준수. `--force`·`reset --hard`·`branch -D`·`checkout .`·파괴적 삭제는 명시 요청 시만.
-- **외부 발행(훅 강제는 push ask·발행 본문 attribution 차단뿐 — 나머지 절차 규칙)**: 이슈·MR/PR 생성·원격 브랜치 생성은 **각각 사용자 확인**(추측 발행 금지). 브랜치 base·이름, MR/PR target·draft도 확인. **브랜치 우선** — main 직접 작업 금지. 커밋 정리는 의미 단위, push된 커밋 rebase 금지.
+- **git**: **push는 사용자 확인 후**(git-guard가 `ask` 반환 — 네이티브 승인 UI, 추측 push 금지. 작업을 시작할 때 사용자가 고른 허가 범위 안의 push·PR 생성·병합은 그 확인으로 갈음한다 — `playbooks/task-units.md` §5). 커밋은 승인 게이트 없음 — 단 AI attribution(`Co-Authored-By: Claude`·`Generated with … Claude/Codex` 등)은 커밋 메시지·**모든 발행 본문(PR/이슈/코멘트/릴리즈 등) 금지**. 훅 하드 차단 범위는 `gh pr|issue create/edit/comment/merge/review/close/reopen` 인라인 본문까지 — 파일 경유 본문(`--body-file`)·그 외 gh 표면(release·api 등)·워커 내부 호출은 훅이 못 보므로 절차 준수. `--force`·`reset --hard`·`branch -D`·`checkout .`·파괴적 삭제는 명시 요청 시만.
+- **외부 발행(훅 강제는 push ask·발행 본문 attribution 차단뿐 — 나머지 절차 규칙)**: 이슈·MR/PR 생성·원격 브랜치 생성은 **각각 사용자 확인**(허가 범위에 든 것은 제외 — `task-units.md` §5)(추측 발행 금지). 브랜치 base·이름, MR/PR target·draft도 확인. **브랜치 우선** — main 직접 작업 금지. 커밋 정리는 의미 단위, push된 커밋 rebase 금지.
 - **불가역(git 밖 포함)**: DB 변경 실행·마이그레이션·대량 삭제·원본 덮어쓰기 = 개별 사용자 확인 후. **파괴적 조작 직전 현재 브랜치·HEAD·경로·대상 재확인**(실측: 상태 오인이 최고 강도 사고 유형).
 - **배포**: 하네스 배포는 deploy.sh 경유만(manifest diff → 백업+원자 교체 → 신규 세션 smoke). **D9 예외**: 배포 직후 smoke 실패 한정, 직전 백업 즉시 복원은 승인 없이 실행 + 사후 보고.
 - **활성 훅**(배포 단일 출처 = 이 repo): `git-guard`(push ask·커밋/gh 발행 attribution 차단) · `codex-scan`(시크릿 backstop) · `gate-guard`(C1·C2·SPEC/MODE 게이트·고정 지시 파일 쓰기 ask) · `session-mode-guard` · `reinject-mode` · `task-mode-guard`(spec|log 리셋) · `detect-layer`(관측 전용 — InstructionsLoaded·ConfigChange·SubagentStop → 세션 `.events` 사이드카, 차단 없음) · `capture-decision`(선택 질문·답 → 작업 폴더 `decisions.md`) · `reread-track`(압축 뒤 작업 기록 Read 시각). 테스트: `hooks/tests/run.sh`.
@@ -128,7 +128,7 @@
 | `playbooks/design-taste.md` | 리뷰 설계 렌즈·리팩토링 그룹핑 대화·새 파일 구조/이름 설계 |
 | `playbooks/issue-archive.md` | L1 사이클 마감(검증 완료 후) — CS 이슈 아카이브 |
 | `playbooks/writing/ROUTING.md` | 사람이 읽을 문서(README·ADR·해설·보고·커밋·PR 본문)를 쓰거나 고칠 때 · 작업 기록(명세서·log·NEXT)을 쓸 때 · 문서에 그림을 넣을 때 — 표에서 읽을 문서를 찾는다(공통 원칙·낱말 사례 표·작업 기록·그림. 사례 표 `wording-table.md`에 줄을 덧붙이는 일은 새 작업으로 보지 않는다 — 하네스 저장소(`agent-discipline/harness`) 원본에 덧붙이고 다음 배포 때 반영. 배포본에 덧붙이면 사라진다) |
-| `templates/requirement-spec.md` | L1 진입 시 (모든 구현의 진입점) |
+| `templates/requirement-spec.md` | L1 진입 시 (모든 구현의 진입점) · task를 나누는 기준과 task마다 적을 칸 = `playbooks/task-units.md` |
 | `templates/log.md` | 〃 (긴급은 log 먼저) |
 | `templates/measurement-log.md` | 측정로그 최초 생성 시 · 12열 로그에 첫 13열 행을 붙일 때 |
 | `templates/next.md` | 프로젝트 `docs/plans/NEXT.md` 최초 생성 시 |
