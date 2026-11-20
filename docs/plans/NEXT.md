@@ -4,7 +4,7 @@
 
 ## 기준
 
-- 마지막 갱신: 2026-11-20 · 직전 완료 작업: `docs/plans/2026-11-20/reread-full-read-and-session-leftover/`(v4.6) · 병합 상태: 브랜치 `fix/reread-full-read-and-session-leftover`(push 전). 그 앞 `cleanup-unused`는 `main` 병합(`25bd58b`)
+- 마지막 갱신: 2026-11-20 · 직전 완료 작업: `docs/plans/2026-11-20/writing-rules-builtin/`(v4.7) · 병합 상태: 브랜치 `feat/writing-rules-builtin`(push 전). 그 앞 v4.6은 `main` 병합(`399367f`)
 
 ## 다음 작업 후보 (우선순위순)
 
@@ -76,6 +76,16 @@
 ### N8. `settings.json` 사본을 실제 등록과 맞추기 — 우선순위: 낮음 · 관측 신호: 2026-11-20 정리 작업 리뷰(Q2)
 
 - 저장소 사본에 `detect-layer.sh`(InstructionsLoaded·ConfigChange·SubagentStop) 등록이 없다. 실제 `~/.claude/settings.json`에는 있다. 사본대로 설치하면 관측 훅이 돌지 않는다.
+
+### N9. 글쓰기 규칙 후속 — 우선순위: 중간 · 관측 신호: 2026-11-20 `writing-rules-builtin` 대조
+
+- `~/.claude/CLAUDE.md` 11행이 소스 저장소를 옛 이름 `claude-code-harness`로 적고 있다(배포 제외 파일 — 사용자 확인 뒤 수정). 다른 프로젝트 세션이 사례 표의 원본을 찾는 단서가 이 줄과 `ROUTING.md`뿐이다.
+- `ROUTING.md`의 유형 문서 넷(학습 노트, 해설서, 설계 문서, 협업 문서)이 "작성 예정"이다. 없는 동안 무엇을 따를지는 표의 "먼저 읽을 것"뿐이다.
+- core.md 8절의 "문서에 그림을 넣을 때"는 그리기로 정한 뒤의 트리거이고 `ROUTING.md`는 "흐름·구조가 들어가면"이라 폭이 다르다(대조에서 실해 작다고 판단 — 관측만).
+
+### N10. 한 작업이 두 저장소를 고칠 때의 게이트 — 우선순위: 낮음 · 관측 신호: 2026-11-20 rules README Edit 차단
+
+- 게이트 상태는 저장소(작업 트리)마다 따로라서, 한 저장소에서 합의한 명세로 다른 저장소를 고치면 SPEC=0으로 막힌다. 이번에는 두 번째 저장소에 작업 폴더를 만들고 같은 합의를 옮겨 적었다. 절차로 적어 둘지, 지금처럼 그때 처리할지 미정.
 
 ## 보류·이월
 
