@@ -1,6 +1,6 @@
 # playbook: 리뷰 (中=듀얼 1패스 / 높음=병렬 듀얼 리뷰 루프)
 
-> 트리거: **中·높음**의 리뷰 시점(페이즈 구현 완료·커밋 후). 개발 단계의 설계 자문은 §3 렌즈만 참조. **낮음(셀프체크)만 이 문서를 읽지 않는다.** 中 = §1의 **듀얼 1패스**(⓪~④ + post-fix 타깃 재점검, ⑤ 반복 없음) + §2·§3 / 높음 = §1 전체(반복 루프 max3) + 설계 선검증(조건·생략 기록 = core §4 강도표)·blind 테스트 워커. §2 대칭 부담·ledger는 中·높음 공통.
+> 트리거: **中·높음**의 리뷰 시점(task 구현 완료·커밋 후 — task로 나누지 않았으면 작업 구현 완료 후). 개발 단계의 설계 자문은 §3 렌즈만 참조. **낮음(셀프체크)만 이 문서를 읽지 않는다.** 中 = §1의 **듀얼 1패스**(⓪~④ + post-fix 타깃 재점검, ⑤ 반복 없음) + §2·§3 / 높음 = §1 전체(반복 루프 max3) + 설계 선검증(조건·생략 기록 = core §4 강도표)·blind 테스트 워커. §2 대칭 부담·ledger는 中·높음 공통.
 > ★ **산출물 유형 분기 (2026-08-06 — core §4의 정의를 따른다)**: 산출물이 **설계 문서**면 中·높음 공통으로 **中 변형(⓪~④ + post-fix 타깃 재점검 1회)** 이 상한(⑤ 반복 없음 — 높음의 3루프는 실행물 전용, blind 테스트 워커는 비대상). 리뷰어 프롬프트에 명시: **"동기화·표기·색인·버전 정합은 지적 대상이 아니다 — 구조·불변식·판정 충돌만"**(그 유형의 **사냥을 리뷰가 하지 않는다**는 뜻이다 — 검산 도구·구현 소관. 이미 발견된 결함의 수정을 막는 규칙이 아니다. 실측: 문서 리뷰 지적의 ~60%가 이 유형에 소모됐다).
 > 원리: 같은 모델 여러 개는 편향을 공유한다 — 독립 신호는 다른 모델(codex)이 제공하고, 최종 판정은 투표가 아니라 근거 품질 재평가다.
 
@@ -17,7 +17,7 @@
 # repo 루트에서 실행(하위 cwd면 untracked 수집이 잘린다). 함수는 현재 셸에서 돌아 실패해도 셸이 죽지 않고 $OUT/$PKT/$RES/$mirror가 남는다
 set -o pipefail; OUT=$(mktemp -d); PKT="$OUT/packet"; RES="$OUT/results"; mkdir -p "$PKT" "$RES"
 #   OUT·mirror는 반드시 repo 밖 — repo 안에 두면 packet 산출물이 untracked로 잡혀 자기 자신을 읽는다
-BASE=<페이즈 시작 SHA>; TASK=docs/plans/<날짜>/<작업>; MAX_F=1048576; MAX_T=5242880   # 상한은 untracked 한정
+BASE=<task 시작 SHA>; TASK=docs/plans/<날짜>/<작업>; MAX_F=1048576; MAX_T=5242880   # 상한은 untracked 한정
 EXCLP=(':(exclude,glob)docs/plans/**/log.md' ':(exclude)docs/measurement-log.md' ':(exclude)docs/plans/NEXT.md')   # 모든 작업 ledger·측정로그·NEXT(메인 사전 판단) 제외
 mkpacket() {
   [ -f "$TASK/requirement-spec.md" ] && install -m 0444 "$TASK/requirement-spec.md" "$PKT/spec.md" \
@@ -72,7 +72,7 @@ set +o pipefail
 ## 2. finding 규칙
 
 - **자격 조건 (전부 충족해야 finding)**: ① 현재 diff가 도입·변경한 **산출물**(코드·문서·정책 등) ② **근거 위치** — `file:line`(**packet 밖 미러 파일도 `file:line`을 적으면 허용** — 메인 재현 가능성이 조건), 또는 "diff에 *없는 것*"(완전성·통합 렌즈) finding은 누락 산출물 경로·deploy 단계·runtime 계약 형식 허용 ③ 실질 리스크(코드=정확성·성능·유지보수 / 문서·정책=정확성·일관성·운영·유지보수 중 무엇인지 명시) ④ spec 또는 변경 의도와의 연결. 하나라도 없으면 open question — 단 ①을 못 채운 것(원래 있던 문제)은 버리지 않고 `review-triage.md`의 순서로 가른다(대개 후보, 목표를 막으면 사용자에게 묻는다) — 단순 선호·취향은 finding이 아니다.
-- **상태 ledger** (필수 필드 — 종료 판정의 입력): `id / first_seen_loop / source(opus·codex·감사·main-synthesis) / 근거(file:line, 또는 diff-밖 finding은 누락 경로·deploy·runtime 계약) / disposition(채택·기각·후보·open question — 채택 = 지금 고친다, 후보 = 종전의 "범위 밖"에 우선순위 S/A/B를 붙여 작업 log 후보 표와 NEXT로, `review-triage.md`) / status(open·fixed·user-deferred·unresolved) / fixed_in_loop`. 기록 위치: **작업 폴더 `log.md`의 리뷰 ledger 섹션**(`templates/log.md` — 이 스키마의 인스턴스 + finding별 실질 내용. core §7). **종료식**: open = disposition=채택 AND status=open / 신규 채택 = first_seen_loop=현재 루프 AND disposition=채택. **finding 단위**: 같은 `file:line`·같은 불변식 위반은 1건(출처가 둘이면 source 병기) — 쪼개거나 합쳐 종료식을 조작하지 않는다. 코드 변경 없이 테스트만 추가한 수정도 재점검 대상. **메인 종합 중 양 리뷰 비교로 발견한 결함**은 `source: main-synthesis`로 등록 — 독립 신호는 아니나 유효 finding(근거·자격은 동일).
+- **상태 ledger** (필수 필드 — 종료 판정의 입력): `id / task / first_seen_loop / source(opus·codex·감사·main-synthesis) / 근거(file:line, 또는 diff-밖 finding은 누락 경로·deploy·runtime 계약) / disposition(채택·기각·후보·open question — 채택 = 지금 고친다, 후보 = 종전의 "범위 밖"에 우선순위 S/A/B를 붙여 작업 log 후보 표와 NEXT로, `review-triage.md`) / status(open·fixed·user-deferred·unresolved) / fixed_in_loop`. 기록 위치: **작업 폴더 `log.md`의 리뷰 ledger 섹션**(`templates/log.md` — 이 스키마의 인스턴스 + finding별 실질 내용. core §7). **종료식**: open = disposition=채택 AND status=open / 신규 채택 = first_seen_loop=현재 루프 AND disposition=채택. **finding 단위**: 같은 `file:line`·같은 불변식 위반은 1건(출처가 둘이면 source 병기) — 쪼개거나 합쳐 종료식을 조작하지 않는다. 코드 변경 없이 테스트만 추가한 수정도 재점검 대상. **메인 종합 중 양 리뷰 비교로 발견한 결함**은 `source: main-synthesis`로 등록 — 독립 신호는 아니나 유효 finding(근거·자격은 동일).
 - **대칭 부담 (신규 채택 finding 0인 루프 — 무근거 통과 차단)**: finding 0을 종료로 인정하려면 §3 렌즈마다 **applicable / not-applicable을 근거 1줄로 판정**하고(예: "동시성 = N/A: 단일 인스턴스 read-only"), **applicable 렌즈를 전부 `verified`로 입증**한다. **고정 개수 요구 없음** — 적용 안 되는 렌즈를 형식 충족용으로 verified 처리하는 것이 더 큰 위반(과거 "필수 finding 강제 → 날조" 재현). **verified ledger 필드**: `lens / 근거(file:line, 또는 "diff에 *없는 것*" 렌즈는 누락 산출물 경로·deploy 단계·runtime 계약 허용) / how(충족 방식 1줄) / source(opus·codex)`. 근거는 병렬 리뷰 원문에서 인용(메인 사후 창작 금지). **양쪽 균형**: applicable 렌즈를 Opus·codex가 합쳐서 전부 커버하면 충족 — applicable verified 전체를 통틀어 한 source(opus 또는 codex)의 기여가 0건이면 종료는 가능하되 `비대칭` 플래그로 리스크 기록(편향 공유 가능성). 中·높음 공통, 신규 채택이 있는 루프엔 불필요(검사가 이미 입증됨).
 - 애매하면 단정하지 않는다 — open question으로 남긴다 ("이 컬렉션의 최대 크기는 어디서 제한되나?").
 
