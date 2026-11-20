@@ -128,6 +128,7 @@
 | `playbooks/design-taste.md` | 리뷰 설계 렌즈·리팩토링 그룹핑 대화·새 파일 구조/이름 설계 |
 | `playbooks/issue-archive.md` | L1 사이클 마감(검증 완료 후) — CS 이슈 아카이브 |
 | `playbooks/writing/ROUTING.md` | 사람이 읽을 문서(README·ADR·해설·보고·커밋·PR 본문)를 쓰거나 고칠 때 · 작업 기록(명세서·log·NEXT)을 쓸 때 · 문서에 그림을 넣을 때 — 표에서 읽을 문서를 찾는다(공통 원칙·낱말 사례 표·작업 기록·그림. 사례 표 `wording-table.md`에 줄을 덧붙이는 일은 새 작업으로 보지 않는다 — 하네스 저장소(`agent-discipline/harness`) 원본에 덧붙이고 다음 배포 때 반영. 배포본에 덧붙이면 사라진다) |
+| `playbooks/decisions/ROUTING.md` | 설계하다 갈림을 만났을 때(서비스 간 통신, 외부 연계, 백엔드·프런트엔드 구조) — 표에서 해당 문서를 찾아 그 줄을 따른다. 줄이 없으면 메인이 먼저 안을 내고 사용자와 기준을 정해 줄로 더한다 |
 | `templates/requirement-spec.md` | L1 진입 시 (모든 구현의 진입점) · task를 나누는 기준과 task마다 적을 칸 = `playbooks/task-units.md` |
 | `templates/log.md` | 〃 (긴급은 log 먼저) |
 | `templates/measurement-log.md` | 측정로그 최초 생성 시 · 12열 로그에 첫 13열 행을 붙일 때 |
