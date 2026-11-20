@@ -92,7 +92,17 @@ dr_legacy_init() { # fixture 사본 → $SANDBOX/legacy (SCRIPT_DIR 기준 state
     [ -f "$TESTS_DIR/fixtures/legacy/$f" ] || fail legacy-fixture-missing
     cp "$TESTS_DIR/fixtures/legacy/$f" "$LEG/$f"
   done
+  # v4.6 I3: 세션 시작 안내문의 ① 순서 서술 한 줄만 의도적으로 바뀌었다 — sandbox 사본에서 그 한 줄을 새 문구로
+  #   바꿔 "종전 출력"으로 쓴다(fixture 파일은 그대로). 옛 줄이 정확히 한 번 있어야 하고, 바꾼 뒤 새 줄이 있어야 한다.
+  local n
+  n=$(grep -cxF -- "$DR_MSG_OLD_1" "$LEG/session-mode-guard.sh" || true)
+  [ "$n" = "1" ] || fail legacy-msg-line-not-found
+  _O="$DR_MSG_OLD_1" _N="$DR_MSG_NEW_1" awk '$0 == ENVIRON["_O"] { print ENVIRON["_N"]; next } { print }' \
+    "$LEG/session-mode-guard.sh" > "$LEG/smg.tmp" && mv "$LEG/smg.tmp" "$LEG/session-mode-guard.sh"
+  grep -qxF -- "$DR_MSG_NEW_1" "$LEG/session-mode-guard.sh" || fail legacy-msg-line-not-patched
 }
+DR_MSG_OLD_1='  ① 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의'
+DR_MSG_NEW_1='  ① 새 작업 폴더에 log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의'
 # 보충 13·27: reread-track 를 한 번 실행해 이 세션의 표시 파일(<state_dir>/<sid>.reread-seen)이 생기게 한다(대상 아닌 Read)
 dr_seen() { # <assert-id>
   run_hook reread-track.sh "$(dr_read "$REPO/README.md")"
@@ -751,12 +761,64 @@ test_dr_rr_13() { # [v4.5] 상대 경로(cwd 기준) → canonical 일치
   assert_exit 0 rr13-relative-release
 }
 
-test_dr_rr_14() { # [v4.5] 부분 읽기(offset/limit)도 읽음으로 인정
+test_dr_rr_14() { # [v4.6 I1 — v4.5 뜻 뒤집음] 부분 읽기(offset/limit)는 읽음으로 인정하지 않음 → 전체 Read 뒤에만 해제
   dr_setup_task; dr_compact_at $(( $(dr_now) - 100 ))
   dr_l1; assert_exit 2 rr14-control-blocked
   dr_read_hook "$SPECF" "" 40 25; dr_read_hook "$LOGF" "" 1 1
   dr_l1
-  assert_exit 0 rr14-partial-release
+  assert_exit 2 rr14-partial-still-blocked
+  dr_read_hook "$SPECF"; dr_read_hook "$LOGF"
+  dr_l1
+  assert_exit 0 rr14-full-release
+}
+
+# I1 입력 변형: <file> <offset-json> <limit-json> — "absent" 면 그 필드를 넣지 않는다(null 은 JSON null)
+dr_read_v() {
+  dr_read "$1" | jq -c --arg o "$2" --arg l "$3" '
+    .tool_input |= (del(.offset, .limit)
+      + (if $o == "absent" then {} else {offset: ($o | fromjson)} end)
+      + (if $l == "absent" then {} else {limit: ($l | fromjson)} end))'
+}
+
+test_dr_rp_01() { # [v4.6 I1] offset만·limit만·둘 다 → .reread 기록 없음(차단 유지) / null·필드 없음 → 기록
+  local v o l
+  for v in "40 absent" "absent 25" "40 25"; do
+    read -r o l <<< "$v"
+    dr_setup_task; rm -f "$STATE_DIR/$SID.reread"; dr_compact_at $(( $(dr_now) - 100 ))
+    run_hook reread-track.sh "$(dr_read_v "$SPECF" "$o" "$l")"; assert_exit 0 "rp01-partial-exit-$o-$l"
+    run_hook reread-track.sh "$(dr_read_v "$LOGF" "$o" "$l")"
+    if dr_reread_has "$SPECF" || dr_reread_has "$LOGF"; then fail "rp01-partial-not-recorded-$o-$l"; fi
+    dr_l1; assert_exit 2 "rp01-partial-still-blocked-$o-$l"
+  done
+  for v in "null null" "null absent" "absent null" "absent absent"; do
+    read -r o l <<< "$v"
+    dr_setup_task; rm -f "$STATE_DIR/$SID.reread"; dr_compact_at $(( $(dr_now) - 100 ))
+    run_hook reread-track.sh "$(dr_read_v "$SPECF" "$o" "$l")"; assert_exit 0 "rp01-full-exit-$o-$l"
+    run_hook reread-track.sh "$(dr_read_v "$LOGF" "$o" "$l")"
+    dr_reread_has "$SPECF" || fail "rp01-full-recorded-spec-$o-$l"
+    dr_reread_has "$LOGF" || fail "rp01-full-recorded-log-$o-$l"
+    dr_l1; assert_exit 0 "rp01-full-release-$o-$l"
+  done
+}
+
+test_dr_rp_02() { # [v4.6 I1] 부분 읽기도 세션 표시(<sid>.reread-seen)는 만든다(대상 파일·대상 아닌 파일 모두)
+  dr_setup_task
+  rm -f "$STATE_DIR/$SID.reread-seen"
+  run_hook reread-track.sh "$(dr_read_v "$SPECF" 40 25)"
+  assert_exit 0 rp02-exit-target
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail rp02-seen-on-partial-target
+  rm -f "$STATE_DIR/$SID.reread-seen"
+  run_hook reread-track.sh "$(dr_read_v "$REPO/README.md" absent 3)"
+  [ -e "$STATE_DIR/$SID.reread-seen" ] || fail rp02-seen-on-partial-nontarget
+}
+
+test_dr_rp_03() { # [v4.6 I1] 전체 Read 기록 뒤의 부분 읽기는 기존 기록을 지우거나 바꾸지 않는다
+  dr_setup_task
+  dr_read_hook "$SPECF"
+  printf '%s\t%s\n' 5 "$SPECF" > "$STATE_DIR/$SID.reread"    # 옛 시각으로 고정 — 부분 읽기가 시각을 바꾸면 드러난다
+  cp "$STATE_DIR/$SID.reread" "$SANDBOX/rr.before"
+  run_hook reread-track.sh "$(dr_read_v "$SPECF" 1 1)"
+  cmp -s "$SANDBOX/rr.before" "$STATE_DIR/$SID.reread" || fail rp03-record-unchanged
 }
 
 test_dr_rr_15() { # [v4.5] .reread 형식 = 줄마다 <epoch>\t<canonical> · 같은 파일 재Read 는 그 줄을 교체(중복 줄 없음)
@@ -797,10 +859,12 @@ test_dr_bl_01() { # [v4.5] 미독 + L1 Write → exit 2, 계약 문구로 시작
     done
   done
   local f="$SANDBOX/bl01.err" note last; printf '%s\n' "$HOOK_STDERR" > "$f"     # 보충 23
-  note=$(grep -nF '(offset·limit 부분 읽기도 인정)' "$f" | head -1 | cut -d: -f1)
+  note=$(grep -nxF '(offset·limit 없이 파일 전체를 Read 해야 인정)' "$f" | head -1 | cut -d: -f1)   # v4.6 I2
   last=$(grep -nF -e "$SPECF" -e "$LOGF" -e "$DECF" "$f" | tail -1 | cut -d: -f1)
-  [ -n "$note" ] || fail bl01-partial-read-note
-  [ "$note" -gt "$last" ] || fail bl01-partial-read-note-after-paths
+  [ -n "$note" ] || fail bl01-full-read-note
+  [ "$note" -gt "$last" ] || fail bl01-full-read-note-after-paths
+  [ "$note" = "$(wc -l < "$f")" ] || fail bl01-full-read-note-last-line
+  assert_file_not_contains "$f" '부분 읽기도 인정' bl01-old-note-gone
 }
 
 test_dr_bl_02() { # [v4.5] Edit·MultiEdit 도 차단
@@ -1747,4 +1811,233 @@ test_dr_sa_07() { # [v4.5 보충 33] 상태파일 하드 거부가 여전히 먼
   dr_assert_no_ask 2 sa07-statefile-denied
   run_hook gate-guard.sh "$(dr_tool PreToolUse Edit "$STATE")"
   assert_stderr_match '상태파일은 훅 소유' sa07-statefile-msg
+}
+
+# ══ v4.6 I3 세션 시작 안내문 순서 · I4/I5 남은 기록 알림 (session-mode-guard startup) ═════════
+
+test_dr_ms_01() { # [v4.6 I3] 세션 시작 안내문 ①이 "새 작업 폴더에 log.md 생성 → 전수 인터뷰 → requirement-spec.md" 순서
+  write_state auto
+  dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/new"
+  grep -qxF -- "$DR_MSG_NEW_1" "$SANDBOX/new" || fail ms01-new-order-line
+  if grep -qxF -- "$DR_MSG_OLD_1" "$SANDBOX/new"; then fail ms01-old-order-line-gone; fi
+}
+
+test_dr_ms_02() { # [v4.6 I3] gate-guard SPEC=0 차단 안내의 복구 순서가 세션 시작 안내문과 같다(log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md)
+  dr_setup_task UNSET 0 0 0
+  dr_l1
+  assert_exit 2 ms02-spec0-exit
+  assert_stderr_match '복구 순서: ① 새 작업 폴더에 log\.md 생성\(Write 도구로\) → 전수 인터뷰 → requirement-spec\.md 작성' ms02-recovery-order
+}
+
+DR_LI_PREFIX='[게이트] 직전 세션의 작업 폴더에 커밋되지 않은 변경이 있습니다: '
+dr_li_line() { printf '%s%s — 사용자에게 이어갈지 물으세요(이어가기 / 기록만 커밋 / 되돌리기).' "$DR_LI_PREFIX" "$1"; }
+dr_prev() { # <sid> <TASK_PATH 줄 값|-(줄 없음)> <몇 초 전> — 다른 세션의 상태파일(mtime 지정)
+  local f="$STATE_DIR/$1"
+  { echo SCHEMA=4; echo MODE=auto; echo SPEC=1; echo PENDING_GATE=0; echo DEBT=0
+    if [ "$2" != "-" ]; then echo "TASK_PATH=$2"; fi; } > "$f"
+  touch -d "@$(( $(dr_now) - $3 ))" "$f"
+}
+dr_task_dir() { # <name> → 커밋되지 않은 log.md 가 있는 작업 폴더(canonical) 를 만들고 경로 출력
+  local d; d=$(realpath -m -- "$REPO/docs/plans/2026-11-20/$1"); mkdir -p "$d"
+  printf 'log\n' > "$d/log.md"; printf '%s' "$d"
+}
+dr_commit_task() { # <dir> — 그 폴더를 커밋해 변경 없게
+  git -C "$REPO" -c user.email=t@test -c user.name=t add -- "$1" >/dev/null 2>&1
+  git -C "$REPO" -c user.email=t@test -c user.name=t commit -qm task >/dev/null 2>&1
+  [ -z "$(git -C "$1" status --porcelain -- . 2>/dev/null)" ] || fail commit-task-fixture
+}
+dr_li_pair() { # <outbase> [source] — 종전(sandbox 사본)·새 훅 출력. 상태는 auto 로 재설정
+  write_state auto; dr_raw "$LEG/session-mode-guard.sh" "$(dr_ss "${2:-startup}")" "$1.old"
+  write_state auto; dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss "${2:-startup}")" "$1.new"
+}
+dr_li_none() { # <outbase> <assert-id> — 알림 없음 + 종전 출력과 바이트 동일
+  assert_file_not_contains "$1.new" "$DR_LI_PREFIX" "$2-no-notice"
+  [ -s "$1.old" ] || fail "$2-legacy-nonempty"
+  cmp -s "$1.old" "$1.new" || { echo "  [dbg] $(diff "$1.old" "$1.new" | head -3 | tr '\n' ' ')"; fail "$2-identical"; }
+}
+dr_fake_git() { # <mode: fail|slow|record> → $FAKE_BIN 에 git 대역(status 만 가로채고 나머지는 실제 git)
+  local real; real=$(command -v git)
+  FAKE_BIN="$SANDBOX/fakebin"; mkdir -p "$FAKE_BIN"
+  cat > "$FAKE_BIN/git" <<FAKE
+#!/bin/bash
+for a in "\$@"; do
+  if [ "\$a" = status ]; then
+    echo "\$*" >> "$SANDBOX/git-status-calls"
+    case "$1" in
+      fail) echo ' M fake'; exit 1 ;;
+      slow) exec sleep 6 ;;
+    esac
+  fi
+done
+exec "$real" "\$@"
+FAKE
+  chmod +x "$FAKE_BIN/git"
+}
+
+test_dr_li_01() { # [v4.6 I4] 직전 세션 작업 폴더에 변경 있음 → 종전 출력 바로 뒤 정확한 한 줄, 고정 지시보다 앞, 아무것도 바꾸지 않음
+  dr_legacy_init
+  local d; d=$(dr_task_dir prev1)
+  dr_prev prevA-1 "$d" 100
+  # 추적 파일 하나를 두고 mtime 만 바꿔, 기본 git status 라면 index 를 다시 쓸 조건을 만든다(.git/index 불변 확인용)
+  printf 'tracked\n' > "$d/tracked.md"
+  git -C "$REPO" -c user.email=t@test -c user.name=t add -- "$d/tracked.md" >/dev/null 2>&1
+  git -C "$REPO" -c user.email=t@test -c user.name=t commit -qm tracked >/dev/null 2>&1
+  git -C "$REPO" status --porcelain=v1 -uall -- docs > "$SANDBOX/st.before"
+  sha256sum "$d/log.md" > "$SANDBOX/sum.before"
+  touch -d "@$(( $(dr_now) - 3600 ))" "$d/tracked.md"
+  sha256sum "$REPO/.git/index" > "$SANDBOX/idx.before"
+  dr_li_pair "$SANDBOX/o"
+  sha256sum -c --quiet "$SANDBOX/idx.before" >/dev/null 2>&1 || fail li01-git-index-unchanged
+  dr_is_prefix "$SANDBOX/o.old" "$SANDBOX/o.new" || fail li01-legacy-prefix
+  tail -c +"$(( $(wc -c < "$SANDBOX/o.old") + 1 ))" "$SANDBOX/o.new" > "$SANDBOX/o.rest"
+  [ "$(head -n 1 "$SANDBOX/o.rest")" = "$(dr_li_line "$d")" ] \
+    || { echo "  [dbg] rest=$(head -n 2 "$SANDBOX/o.rest" | tr '\n' ' ')"; fail li01-line-right-after-legacy; }
+  [ "$(wc -l < "$SANDBOX/o.rest")" = "1" ] || fail li01-exactly-one-line
+  git -C "$REPO" status --porcelain=v1 -uall -- docs > "$SANDBOX/st.after"
+  cmp -s "$SANDBOX/st.before" "$SANDBOX/st.after" || fail li01-git-status-unchanged
+  sha256sum -c --quiet "$SANDBOX/sum.before" >/dev/null 2>&1 || fail li01-files-unchanged
+  # 고정 지시가 있으면 알림 줄이 그보다 앞
+  dr_standing '항상 한국어로 답한다\n'
+  write_state auto; dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/o2"
+  local a b; a=$(dr_lineno "$SANDBOX/o2" "$DR_LI_PREFIX"); b=$(dr_lineno "$SANDBOX/o2" '[고정 지시]')
+  { [ -n "$a" ] && [ -n "$b" ] && [ "$a" -lt "$b" ]; } || { echo "  [dbg] a=$a b=$b"; fail li01-before-standing; }
+}
+
+test_dr_li_02() { # [v4.6 I4] 직전 세션 작업 폴더에 변경 없음(커밋됨) → 알림 없음, 종전 출력과 바이트 동일
+  dr_legacy_init
+  local d; d=$(dr_task_dir prev2); dr_commit_task "$d"
+  dr_prev prevA-2 "$d" 100
+  dr_li_pair "$SANDBOX/o"
+  dr_li_none "$SANDBOX/o" li02
+}
+
+test_dr_li_03() { # [v4.6 I4] 가장 최근에 고쳐진 다른 세션 하나만 본다
+  dr_legacy_init
+  local dirty clean
+  dirty=$(dr_task_dir old-dirty); clean=$(dr_task_dir new-clean); dr_commit_task "$clean"
+  dr_prev prevOld-3 "$dirty" 500
+  dr_prev prevNew-3 "$clean" 100
+  dr_li_pair "$SANDBOX/a"
+  dr_li_none "$SANDBOX/a" li03-older-dirty-ignored
+  rm -f "$STATE_DIR/prevOld-3" "$STATE_DIR/prevNew-3"
+  local d1 d2; d1=$(dr_task_dir newer-dirty); d2=$(dr_task_dir older-dirty2)
+  dr_prev prevNew-3b "$d1" 100
+  dr_prev prevOld-3b "$d2" 500
+  write_state auto; dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/b"
+  grep -qxF -- "$(dr_li_line "$d1")" "$SANDBOX/b" || fail li03-newest-notified
+  assert_file_not_contains "$SANDBOX/b" "$d2" li03-older-not-notified
+  [ "$(dr_count "$SANDBOX/b" "$DR_LI_PREFIX")" = "1" ] || fail li03-one-line
+}
+
+test_dr_li_04() { # [v4.6 I4] 현재 세션의 상태파일은 고르지 않는다(가장 최근이고 변경 있어도)
+  dr_legacy_init
+  local cur other
+  cur=$(dr_task_dir current-dirty); other=$(dr_task_dir other-clean); dr_commit_task "$other"
+  dr_prev prevA-4 "$other" 300
+  write_state auto; echo "TASK_PATH=$cur" >> "$STATE"
+  dr_raw "$LEG/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/o.old"
+  write_state auto; echo "TASK_PATH=$cur" >> "$STATE"
+  dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/o.new"
+  dr_li_none "$SANDBOX/o" li04-current-excluded
+  # 다른 세션이 변경 있음 → 그 경로로 알림(현재 세션 경로가 아님)
+  local od; od=$(dr_task_dir other-dirty); dr_prev prevB-4 "$od" 200
+  write_state auto; echo "TASK_PATH=$cur" >> "$STATE"
+  dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/p"
+  grep -qxF -- "$(dr_li_line "$od")" "$SANDBOX/p" || fail li04-other-notified
+  assert_file_not_contains "$SANDBOX/p" "$DR_LI_PREFIX$cur" li04-current-not-notified
+}
+
+dr_li05_clear() { # 미끼·직전 세션 파일 정리(디렉토리 미끼는 안의 파일부터)
+  if [ -d "$STATE_DIR/prevDir-5" ]; then rm -f -- "$STATE_DIR/prevDir-5/x"; rmdir -- "$STATE_DIR/prevDir-5"; fi
+  rm -f -- "$STATE_DIR"/prev* "$STATE_DIR/.prevDot"
+}
+
+test_dr_li_05() { # [v4.6 I4] 세션 id 꼴이 아닌 것(확장자 있는 파일·점 파일·심링크·디렉토리)은 더 최근이어도 고르지 않는다
+  dr_legacy_init
+  local dirty clean k fut; dirty=$(dr_task_dir x-dirty); clean=$(dr_task_dir x-clean); dr_commit_task "$clean"
+  fut="@$(( $(dr_now) + 1000 ))"     # 미끼는 미래 시각 — 훅이 실행 중 만드는 파일보다도 최근이게
+  printf 'SCHEMA=4\nMODE=auto\nSPEC=1\nPENDING_GATE=0\nDEBT=0\nTASK_PATH=%s\n' "$dirty" > "$SANDBOX/target-state"
+  for k in symlink ext-compact ext-reread dotfile directory; do
+    dr_li05_clear
+    dr_prev prevReal-5 "$clean" 500
+    case "$k" in
+      symlink) ln -s "$SANDBOX/target-state" "$STATE_DIR/prevLink-5"; touch -h -d "$fut" "$STATE_DIR/prevLink-5" ;;
+      ext-compact) cp "$SANDBOX/target-state" "$STATE_DIR/prevExt-5.compact"; touch -d "$fut" "$STATE_DIR/prevExt-5.compact" ;;
+      ext-reread) cp "$SANDBOX/target-state" "$STATE_DIR/prevExt-5.reread"; touch -d "$fut" "$STATE_DIR/prevExt-5.reread" ;;
+      dotfile) cp "$SANDBOX/target-state" "$STATE_DIR/.prevDot"; touch -d "$fut" "$STATE_DIR/.prevDot" ;;
+      directory) mkdir -p "$STATE_DIR/prevDir-5"; cp "$SANDBOX/target-state" "$STATE_DIR/prevDir-5/x"; touch -d "$fut" "$STATE_DIR/prevDir-5" ;;
+    esac
+    dr_li_pair "$SANDBOX/o.$k"
+    dr_li_none "$SANDBOX/o.$k" "li05-$k"
+  done
+  # 대조: 같은 내용이 세션 id 꼴의 정규 파일이면 고른다
+  dr_li05_clear
+  dr_prev prevReal-5 "$clean" 500
+  cp "$SANDBOX/target-state" "$STATE_DIR/prevPlain-5"; touch -d "$fut" "$STATE_DIR/prevPlain-5"
+  write_state auto; dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/ctl"
+  grep -qxF -- "$(dr_li_line "$dirty")" "$SANDBOX/ctl" || fail li05-control-regular-file
+}
+
+test_dr_li_06() { # [v4.6 I5] 실패 방향 전부 → 알림 없음 · 종전 출력 그대로 · exit 0
+  dr_legacy_init
+  local c f
+  for c in none no-key empty-value missing is-file no-git git-fail unreadable; do
+    rm -f "$STATE_DIR"/prev*
+    case "$c" in
+      none) : ;;
+      no-key) dr_prev prevF-6 - 100 ;;
+      empty-value) dr_prev prevF-6 "" 100 ;;
+      missing) dr_prev prevF-6 "$REPO/docs/plans/none/zzz" 100 ;;
+      is-file) f=$(dr_task_dir as-file); dr_prev prevF-6 "$f/log.md" 100 ;;
+      no-git)
+        f="$SANDBOX/nogit/t"; mkdir -p "$f"; printf 'x\n' > "$f/log.md"
+        if env -u GIT_DIR -u GIT_WORK_TREE git -C "$f" rev-parse >/dev/null 2>&1; then fail li06-fixture-nogit; fi
+        dr_prev prevF-6 "$f" 100 ;;
+      git-fail) f=$(dr_task_dir gf-dirty); dr_prev prevF-6 "$f" 100; dr_fake_git fail ;;
+      unreadable)
+        f=$(dr_task_dir ur-dirty); dr_prev prevF-6 "$f" 100; chmod 000 "$STATE_DIR/prevF-6"
+        if [ -r "$STATE_DIR/prevF-6" ]; then chmod 600 "$STATE_DIR/prevF-6"; continue; fi ;;   # root 는 건너뜀
+    esac
+    if [ "$c" = git-fail ]; then
+      PATH="$FAKE_BIN:$PATH" dr_li_pair "$SANDBOX/o.$c"
+      [ -s "$SANDBOX/git-status-calls" ] || fail li06-fake-git-called
+    else
+      dr_li_pair "$SANDBOX/o.$c"
+    fi
+    dr_li_none "$SANDBOX/o.$c" "li06-$c"
+    write_state auto; run_hook session-mode-guard.sh "$(dr_ss startup)"; assert_exit 0 "li06-exit-$c"
+    [ -e "$STATE_DIR/prevF-6" ] && chmod 600 "$STATE_DIR/prevF-6"
+  done
+  return 0
+}
+
+test_dr_li_07() { # [v4.6 I5] git status 시간 초과(2초) → 알림 없음 · 종전 출력 그대로 · 오래 걸리지 않음
+  dr_legacy_init
+  local d t0 t1; d=$(dr_task_dir slow-dirty); dr_prev prevS-7 "$d" 100
+  dr_fake_git slow
+  write_state auto; dr_raw "$LEG/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/o.old"
+  write_state auto
+  t0=$(date +%s%N)
+  PATH="$FAKE_BIN:$PATH" dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/o.new"
+  t1=$(date +%s%N)
+  [ -s "$SANDBOX/git-status-calls" ] || fail li07-fake-git-called
+  [ $(( (t1 - t0) / 1000000 )) -lt 5000 ] || { echo "  [dbg] ms=$(( (t1 - t0) / 1000000 ))"; fail li07-bounded-time; }
+  dr_li_none "$SANDBOX/o" li07
+}
+
+test_dr_li_08() { # [v4.6 I5] startup 밖(resume·clear·compact·fork)에서는 검사하지 않는다 — 알림 없음 · git status 호출 없음
+  dr_legacy_init
+  local d s; d=$(dr_task_dir other-src); dr_prev prevR-8 "$d" 100
+  dr_fake_git record
+  for s in resume clear compact fork; do
+    rm -f "$SANDBOX/git-status-calls"
+    PATH="$FAKE_BIN:$PATH" dr_li_pair "$SANDBOX/o.$s" "$s"
+    dr_li_none "$SANDBOX/o.$s" "li08-$s"
+    [ ! -e "$SANDBOX/git-status-calls" ] || fail "li08-no-git-status-$s"
+  done
+  # 대조: 같은 설정에서 startup 은 검사하고 알린다
+  rm -f "$SANDBOX/git-status-calls"
+  write_state auto; PATH="$FAKE_BIN:$PATH" dr_raw "$HOOKS_DIR/session-mode-guard.sh" "$(dr_ss startup)" "$SANDBOX/st"
+  [ -s "$SANDBOX/git-status-calls" ] || fail li08-control-git-status
+  grep -qxF -- "$(dr_li_line "$d")" "$SANDBOX/st" || fail li08-control-notified
 }

@@ -1,7 +1,7 @@
 a482b885eb9f790650845f61a2873cecbd7da0e1415c68841f39f99c0bc022e1  baseline.manifest
 f211184fe40bf182b2453af9fc525cf43388617c551186c7e0bb75509f49e112  cases/codex-scan.sh
 ae85ca635e1d2b20c36018a22c7edcbabcf30c5ebf4801fabc6adf5ba4b98225  cases/cwd-resolution.sh
-6645d9d047d857f235f4a614131a6f39d3512c2acd07d4c86dca4316fd2085b2  cases/decision-reread.sh
+eae4c2439dfc91a5e72a7bf565e6b08de72f34d0b00ab6421679d187c4bff05e  cases/decision-reread.sh
 dbb769f9ba80c4318fa9b4278328373249d990124dc18f87834a19d34791fe04  cases/detect-layer.sh
 e7182d053acbe1edb76e96824d0a21fb027c0c63d527598b1862091e866c9042  cases/gate-guard.sh
 b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guard.sh
@@ -147,10 +147,23 @@ d285f2e52c48fd37e067f49195afad6d74f48915806f416044ceb1115eb7ce87  run.sh
 # test: test_dr_cp_11
 # test: test_dr_cp_12
 # test: test_dr_cp_13
+# test: test_dr_li_01
+# test: test_dr_li_02
+# test: test_dr_li_03
+# test: test_dr_li_04
+# test: test_dr_li_05
+# test: test_dr_li_06
+# test: test_dr_li_07
+# test: test_dr_li_08
+# test: test_dr_ms_01
+# test: test_dr_ms_02
 # test: test_dr_pv_01
 # test: test_dr_ri_01
 # test: test_dr_ri_02
 # test: test_dr_ri_03
+# test: test_dr_rp_01
+# test: test_dr_rp_02
+# test: test_dr_rp_03
 # test: test_dr_rr_01
 # test: test_dr_rr_02
 # test: test_dr_rr_03

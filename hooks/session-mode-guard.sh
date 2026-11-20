@@ -113,7 +113,7 @@ cat <<MSG
 [게이트] 활성. 현재 상태: MODE=${CURRENT:-UNSET}. 세션 상태파일: .claude/lazymode/$SESSION_ID
 ★ 지금(세션 시작) 게이트 질문을 하지 마세요. 탐색·토론·리서치·분석(L0)은 자유 — docs/** 기록 포함.
 **실행물을 만들거나 바꾸려는 순간(L1)** 게이트가 발동합니다 (core v4 §1):
-  ① 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의
+  ① 새 작업 폴더에 log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md(필수 6칸 — 빈 칸 금지) 작성 → 사용자 합의
      → bash ~/.claude/hooks/set-state.sh spec-approved .claude/lazymode/$SESSION_ID
   ② 자율성 2택 질문 — auto(합의 후 자율 실행, 기본 권장) / lazy(매 diff 이해 게이트 — 학습·OSS)
      → bash ~/.claude/hooks/set-state.sh mode <선택> .claude/lazymode/$SESSION_ID
@@ -127,6 +127,26 @@ if [ "$SOURCE" = "compact" ] && [ "$REREAD_ACTIVE" = 1 ]; then
   TASK_PATH=$(state_get "$STATE" TASK_PATH)
   if [ -n "$TASK_PATH" ]; then
     echo "[게이트] 맥락이 압축됐습니다. 작업 폴더: $TASK_PATH — requirement-spec.md · log.md · decisions.md를 Read 한 뒤 진행하세요."
+  fi
+fi
+
+# 남은 기록 알림(v4.6 I4·I5) — startup 만. 같은 상태 디렉토리에서 현재 세션이 아닌 상태파일(이름이 세션 id 꼴 —
+#   [A-Za-z0-9-]+, 정규 파일, 심링크 제외) 중 mtime 이 가장 최근인 하나의 TASK_PATH 에 커밋되지 않은 변경이 있으면
+#   한 줄로 알린다(종전 출력 뒤, 고정 지시 앞). 알리기만 한다 — 파일·git 상태를 바꾸지 않는다.
+#   직전 세션 없음·TASK_PATH 없음/디렉토리 아님·git 저장소 아님·git 실패·시간 초과(2초)는 전부 조용히 알림 없음.
+if [ "$SOURCE" = "startup" ]; then
+  _PREV=$(find "$STATE_DIR" -mindepth 1 -maxdepth 1 -type f -regextype posix-extended -regex '.*/[A-Za-z0-9-]+' \
+            ! -name "$SESSION_ID" -printf '%T@\t%f\n' 2>/dev/null | sort -t "$(printf '\t')" -k1,1nr 2>/dev/null \
+            | head -n 1 | cut -f2) || _PREV=""
+  if [ -n "$_PREV" ]; then
+    _PREV_TP=$(state_get "$STATE_DIR/$_PREV" TASK_PATH)
+    if [ -n "$_PREV_TP" ] && [ -d "$_PREV_TP" ]; then
+      _PREV_ST=""
+      _PREV_ST=$(timeout 2 env -u GIT_DIR -u GIT_WORK_TREE git --no-optional-locks -C "$_PREV_TP" status --porcelain -- . 2>/dev/null) || _PREV_ST=""
+      if [ -n "$_PREV_ST" ]; then
+        echo "[게이트] 직전 세션의 작업 폴더에 커밋되지 않은 변경이 있습니다: $_PREV_TP — 사용자에게 이어갈지 물으세요(이어가기 / 기록만 커밋 / 되돌리기)."
+      fi
+    fi
   fi
 fi
 
