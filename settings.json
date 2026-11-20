@@ -58,14 +58,6 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/scope-guard.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/template-guard.sh"
-          },
-          {
-            "type": "command",
             "command": "bash ~/.claude/hooks/gate-guard.sh"
           },
           {

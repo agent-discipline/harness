@@ -164,7 +164,7 @@ v4.5의 고정 지시 재주입(아래 "압축 뒤 재독 · 선택 질문 기�
 │   ├── capture-decision.sh    #   선택 질문(AskUserQuestion)의 질문·선택지·답 → 작업 폴더 decisions.md (작업 폴더 전에는 .decisions 사이드카에 쌓았다 옮김)
 │   ├── reread-track.sh        #   작업 기록(spec·log·decisions.md) Read 시각 → .reread 사이드카 (압축 뒤 재독 판정)
 │   ├── deploy.sh              #   manifest diff → 백업+원자 교체 → stale 최상위 파일 정리 → smoke (실패 시 D9 자동 복원)
-│   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증, 258 tests)
+│   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증)
 └── docs/                      # measurement-log + 작업 기록 (L0)
 ```
 
