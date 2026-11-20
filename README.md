@@ -138,6 +138,7 @@ v4.5의 고정 지시 재주입(아래 "압축 뒤 재독 · 선택 질문 기�
 ├── HISTORY.md                 # 버전 이력
 ├── playbooks/                 # 조건부 문서 (core §8 트리거 시에만)
 │   ├── review.md              #   中↑ 듀얼 리뷰 절차 — packet(diff+untracked 전문+spec+grep 원시) + 스캔 통과 read-only 미러(리뷰어 미러-only 탐색), codex 호출·보안 스캔 (단일 출처)
+│   ├── task-units.md          #   작업을 task로 나누는 기준 · 명세의 task 여섯 칸과 분기 · task마다 구현·검증·커밋 · 진행 중 결정 · 커밋과 push의 허가 범위
 │   ├── refactoring.md         #   리팩토링 고정 순서 — 특성테스트 baseline green 선행 (JIT 절차 지식)
 │   ├── implementation-lazymode.md  # lazy: 매 diff 주관식 이해 게이트 + 판정 워커
 │   ├── open-source.md         #   외부 OSS 기여 절차
