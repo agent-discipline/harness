@@ -299,6 +299,8 @@ test_sd_23() { # [L1-09] state-lib 부재 → detect-layer 는 .events 를 만�
   assert_exit 0 sd23-detect-exit
   local out; out=$(find "$REPO" "$SANDBOX/nolib23" -name '*.events' 2>/dev/null | head -5)
   [ -z "$out" ] || { echo "  [dbg] events: $(printf '%s' "$out" | tr '\n' ' ')"; fail sd23-no-events-without-state-lib; }
+  _sd_no_events_under "$REPO" sd23-no-sidecar-lock-state            # lock·상태파일도 만들지 않는다(삭제한 sd_18 이 보던 범위)
+  _sd_no_events_under "$SANDBOX/nolib23" sd23-no-sidecar-in-hookdir
 }
 
 test_sd_24() { # [A-01a] `*` 가 있어도 `!` 재포함 행이 있으면 보호 미성립 → L1 차단 + 조치 안내(파일 무수정)
