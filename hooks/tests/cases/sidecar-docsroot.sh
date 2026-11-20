@@ -10,7 +10,7 @@
 #
 # red/green 기대 (base=10f97ce 기준):
 #   RED(현행 red → 명세 구현에서 green):
-#     sd_01(A1) sd_05(A4+A13) sd_06(A5) sd_08(A7) sd_09(A8) sd_10(B1) sd_11(B2) sd_16(A10) sd_18(A12) sd_20(B6-b)
+#     sd_01(A1) sd_05(A4+A13) sd_06(A5) sd_08(A7) sd_09(A8) sd_10(B1) sd_11(B2) sd_16(A10) sd_18(A12 — 2026-11-20 삭제, sd_23 이 같은 계약) sd_20(B6-b)
 #   GREEN(회귀 방지 — base 에서도 green, 구현 후에도 green 유지 필수):
 #     sd_02(A2) sd_03(A2) sd_04(A3) sd_07(A6) sd_12(B3) sd_13(B4) sd_14(B5) sd_15(A9) sd_17(A11) sd_19(B6-a)
 #
@@ -40,9 +40,9 @@ _sd_json_file() { # <event> <tool> <file_path> <cwd>
   jq -cn --arg e "$1" --arg t "$2" --arg f "$3" --arg c "$4" --arg s "$SID" \
     '{hook_event_name:$e, tool_name:$t, tool_input:{file_path:$f}, cwd:$c, session_id:$s}'
 }
-_sd_json_prompt() { # <prompt> <cwd>
-  jq -cn --arg p "$1" --arg c "$2" --arg s "$SID" \
-    '{hook_event_name:"UserPromptSubmit", prompt:$p, cwd:$c, session_id:$s}'
+_sd_json_cc() { # <cwd> — detect-layer 가 기록하는 ConfigChange 이벤트(사이드카 쓰기 훅 표본)
+  jq -cn --arg f "$1/.claude/settings.local.json" --arg c "$1" --arg s "$SID" \
+    '{hook_event_name:"ConfigChange", source:"local_settings", file_path:$f, cwd:$c, session_id:$s}'
 }
 _sd_json_session() { # <cwd> [source]
   jq -cn --arg c "$1" --arg s "$SID" --arg src "${2:-startup}" \
@@ -88,9 +88,9 @@ _sd_dir_empty() { # <dir> <assert-id> — 디렉토리에 항목이 하나도 �
   out=$(find "$1" -mindepth 1 2>/dev/null | head -5)
   [ -z "$out" ] || { echo "  [dbg] unexpected entries: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"; fail "$2"; }
 }
-_sd_no_sidecar_under() { # <root> <assert-id> — 그 트리 어디에도 세션 사이드카가 없어야
+_sd_no_events_under() { # <root> <assert-id> — 그 트리 어디에도 이 세션의 .events 사이드카·lock·상태파일이 없어야
   local out
-  out=$(find "$1" \( -name "$SID.prompt" -o -name "$SID.turn" -o -name "$SID.turn.lock" -o -name "$SID" \) 2>/dev/null | head -5)
+  out=$(find "$1" \( -name "$SID.events" -o -name "$SID.events.lock" -o -name "$SID" \) 2>/dev/null | head -5)
   [ -z "$out" ] || { echo "  [dbg] unexpected sidecar: $(printf '%s' "$out" | tr '\n' ' ' | head -c 200)"; fail "$2"; }
 }
 
@@ -122,12 +122,12 @@ test_sd_04() { # [GREEN 회귀] 비-repo cwd → 종전 동작($CWD/.claude/lazy
   _sd_eq "$got" "$SANDBOX/outside/x/.claude/lazymode" sd04-non-repo-cwd-seed
 }
 
-test_sd_05() { # [RED@base] capture-prompt: 하위 cwd 여도 사이드카는 워크트리 루트 + .gitignore + status/index clean (I1·A13)
+test_sd_05() { # [RED@base] 사이드카 훅(detect-layer — 2026-11-20 capture-prompt 삭제로 이동): 하위 cwd 여도 사이드카는 워크트리 루트 + .gitignore + status/index clean (I1·A13)
   mkdir -p "$REPO/sub/deep"
-  run_hook capture-prompt.sh "$(_sd_json_prompt "hello sidecar" "$REPO/sub/deep")"
-  assert_exit 0 sd05-capture-exit
-  [ -f "$REPO/.claude/lazymode/$SID.prompt" ] || fail sd05-prompt-at-root
-  assert_file_contains "$REPO/.claude/lazymode/$SID.prompt" "hello sidecar" sd05-prompt-body
+  run_hook detect-layer.sh "$(_sd_json_cc "$REPO/sub/deep")"
+  assert_exit 0 sd05-sidecar-exit
+  [ -f "$REPO/.claude/lazymode/$SID.events" ] || fail sd05-events-at-root
+  assert_file_contains "$REPO/.claude/lazymode/$SID.events" "|CC|local_settings" sd05-events-body
   [ ! -e "$REPO/sub/deep/.claude" ] || fail sd05-no-subdir-sidecar
   _sd_gitignore_star "$REPO/.claude/lazymode" sd05-gitignore-star
   _sd_status_no_claude "$REPO" sd05-status-clean
@@ -151,9 +151,9 @@ test_sd_07() { # [GREEN 회귀] .gitignore 가 다른 내용으로 이미 있으
   assert_exit 0 sd07-session-exit
   assert_file_contains "$REPO/.claude/lazymode/.gitignore" "keepme" sd07-gitignore-preserved
   # 보호가 성립하지 않는 디렉토리(내용 불일치 = rc 2)에는 **새 사이드카를 만들지 않는다**(L1-01 inert).
-  run_hook capture-prompt.sh "$(_sd_json_prompt "keepme probe" "$REPO")"
-  assert_exit 0 sd07-capture-exit
-  _sd_no_sidecar_under "$REPO" sd07-capture-inert-when-unprotected
+  run_hook detect-layer.sh "$(_sd_json_cc "$REPO")"   # 사이드카 훅 표본(2026-11-20 capture-prompt 삭제로 이동)
+  assert_exit 0 sd07-sidecar-exit
+  _sd_no_events_under "$REPO" sd07-sidecar-inert-when-unprotected
   # 사용자가 고쳐야 하는 미보장(rc 2) → L1 쓰기는 fail-closed 차단 + 조치 안내 노출 (A-01b/A-02)
   mkdir -p "$REPO/src"
   run_hook gate-guard.sh "$(_sd_json_file PreToolUse Edit "$REPO/src/a.c" "$REPO")"
@@ -197,22 +197,16 @@ test_sd_17() { # [GREEN 회귀 · A11] .claude 가 repo 밖으로의 심링크�
   rm -rf "$REPO/.claude"
   mkdir -p "$SANDBOX/outside-claude" "$REPO/sub/deep"
   ln -s "$SANDBOX/outside-claude" "$REPO/.claude"
-  run_hook capture-prompt.sh "$(_sd_json_prompt "symlink probe" "$REPO/sub/deep")"
-  assert_exit 0 sd17-capture-exit
-  _sd_dir_empty "$SANDBOX/outside-claude" sd17-capture-no-write-through-symlink
+  run_hook detect-layer.sh "$(_sd_json_cc "$REPO/sub/deep")"   # 사이드카 훅 표본(2026-11-20 capture-prompt 삭제로 이동)
+  assert_exit 0 sd17-sidecar-exit
+  _sd_dir_empty "$SANDBOX/outside-claude" sd17-sidecar-no-write-through-symlink
   run_hook session-mode-guard.sh "$(_sd_json_session "$REPO/sub/deep")"
   assert_exit 0 sd17-session-exit
   _sd_dir_empty "$SANDBOX/outside-claude" sd17-session-no-write-through-symlink
 }
 
-test_sd_18() { # [RED@base · A12] state-lib 로드 실패 → capture-prompt 는 아무 파일도 만들지 않는다(inert)
-  mkdir -p "$SANDBOX/nolib"
-  cp "$HOOKS_DIR"/*.sh "$SANDBOX/nolib/" 2>/dev/null || fail sd18-copy-hooks
-  rm -f "$SANDBOX/nolib/state-lib.sh"
-  _sd_run_hook_from "$SANDBOX/nolib" capture-prompt.sh "$(_sd_json_prompt "no state-lib" "$REPO")"
-  assert_exit 0 sd18-capture-exit
-  _sd_no_sidecar_under "$REPO" sd18-no-file-without-state-lib
-}
+# 2026-11-20 삭제 매핑: sd_18(state-lib 로드 실패 → capture-prompt inert) — capture-prompt 훅 삭제.
+#   같은 계약(state-lib 부재 → 사이드카 미생성·exit 0)을 sd_23 이 detect-layer 로 확인한다.
 
 # ── B. docs-root 면제 (상태 UNSET·SPEC=0 — L1 이면 차단, L0 이면 통과) ────────
 
@@ -348,14 +342,14 @@ test_sd_27() { # [L2-09] 루트가 읽기전용이면 루트 폴백을 채택하
   _sd_eq "$got" "$REPO/sub/.claude/lazymode" sd27-readonly-root-falls-back-to-cwd
 }
 
-test_sd_28() { # [L2-06] rc 2 상황에서 capture-prompt 는 조용히 넘어가지 않는다 — 경고 1줄 + inert
+test_sd_28() { # [L2-06] rc 2 상황에서 사이드카 훅(detect-layer — 2026-11-20 capture-prompt 삭제로 이동)은 조용히 넘어가지 않는다 — 경고 1줄 + inert
   local g="$REPO/.claude/lazymode/.gitignore"
   printf 'keepme\n' > "$g"
-  run_hook capture-prompt.sh "$(_sd_json_prompt "warn probe" "$REPO")"
-  assert_exit 0 sd28-capture-exit
-  assert_stderr_match '사이드카 생략' sd28-capture-warns
-  assert_stderr_match 'gitignore-mismatch' sd28-capture-reason
-  _sd_no_sidecar_under "$REPO" sd28-capture-inert
+  run_hook detect-layer.sh "$(_sd_json_cc "$REPO")"
+  assert_exit 0 sd28-sidecar-exit
+  assert_stderr_match '사이드카 생략' sd28-sidecar-warns
+  assert_stderr_match 'gitignore-mismatch' sd28-sidecar-reason
+  _sd_no_events_under "$REPO" sd28-sidecar-inert
 }
 
 test_sd_29() { # [loop3 F1] 심링크 .claude 는 cwd 로 조용히 갈아타지 않는다 — 루트 유지 + fail-closed + 조치 안내
@@ -384,13 +378,13 @@ test_sd_30() { # [L3-03] reset-pending 인계 실패 경로에서도 원인(giti
   assert_stderr_match 'gitignore-mismatch' sd30-reset-pending-reason-shown
 }
 
-test_sd_31() { # [L3-02] rc 3(환경 실패)에서 capture-prompt 는 inert 가 아니라 '경고 후 진행'이다
+test_sd_31() { # [L3-02] rc 3(환경 실패)에서 사이드카 훅(detect-layer — 2026-11-20 capture-prompt 삭제로 이동)은 inert 가 아니라 '경고 후 진행'이다
   if [ "$(id -u)" = "0" ]; then return 0; fi   # root 는 권한을 무시 — 이 케이스 무의미(skip)
   chmod 555 "$STATE_DIR"
-  run_hook capture-prompt.sh "$(_sd_json_prompt "readonly probe" "$REPO")"
+  run_hook detect-layer.sh "$(_sd_json_cc "$REPO")"
   chmod 755 "$STATE_DIR"
-  assert_exit 0 sd31-capture-exit
+  assert_exit 0 sd31-sidecar-exit
   assert_stderr_match '보호 미보장' sd31-readonly-warns
   assert_stderr_no_match '사이드카 생략' sd31-not-inert-path
-  _sd_no_sidecar_under "$REPO" sd31-readonly-no-write   # 쓰기 불가라 결과적으로 기록은 없다
+  _sd_no_events_under "$REPO" sd31-readonly-no-write   # 쓰기 불가라 결과적으로 기록은 없다
 }

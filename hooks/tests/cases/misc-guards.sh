@@ -1,6 +1,7 @@
-# task-mode-guard · capture-prompt · reinject/session 파싱 가드 · set-state CLI 케이스 (v4 SCHEMA=4)
+# task-mode-guard · reinject/session 파싱 가드 · set-state CLI 케이스 (v4 SCHEMA=4)
 # v4 삭제 매핑(task-04 acceptance): tp_*(template-guard 훅 삭제) · sc_*(scope-guard 훅 삭제) ·
 #   tm_11(task.md 트리거 삭제 — spec 내 표로 대체) · setmode_*(set-mode → set-state 대체, 아래 st_* 가 후신).
+# 2026-11-20 삭제 매핑: cp_01~03(capture-prompt 훅 삭제 — 프롬프트 기록·turn 헤더는 그 훅 고유 동작).
 
 test_tm_01() { # [v4] 새 requirement-spec.md 첫 Write → SPEC=0·MODE=UNSET 리셋
   write_state auto
@@ -92,32 +93,6 @@ test_tm_05() { # [loop3] task-mode-guard: garbage stdin → rc 0 + 경고
   run_hook task-mode-guard.sh 'not-json {{{'
   assert_exit 0 task-garbage-exit
   assert_stderr_match 'stdin JSON 파싱 실패' task-garbage-warn
-}
-
-# ── capture-prompt (변경 없음 — 회귀 가드) ────────────────────────────────────────
-
-test_cp_01() { # [green] 사이드카는 매 턴 덮어씀 — 직전 턴 잔재 없음
-  run_hook capture-prompt.sh "$(json_prompt '첫 번째 요청 푸시해줘')"
-  run_hook capture-prompt.sh "$(json_prompt '두 번째 요청')"
-  assert_exit 0 overwrite-exit
-  assert_file_contains "$SIDECAR" '두 번째 요청' overwrite-new
-  assert_file_not_contains "$SIDECAR" '푸시해줘' overwrite-old
-}
-
-test_cp_02() { # [green] 정상 캡처 — 프롬프트 본문 보존
-  run_hook capture-prompt.sh "$(json_prompt '이 파일 리팩토링 해줘')"
-  assert_exit 0 capture-exit
-  assert_file_contains "$SIDECAR" '이 파일 리팩토링 해줘' capture-body
-}
-
-test_cp_03() { # [신규 phase-02] 헤더 형식 — turn 단조 증가 + ts 존재
-  run_hook capture-prompt.sh "$(json_prompt '첫 요청')"
-  t1=$(sed -n '1s/^#turn=//p' "$SIDECAR")
-  run_hook capture-prompt.sh "$(json_prompt '둘째 요청')"
-  t2=$(sed -n '1s/^#turn=//p' "$SIDECAR")
-  { [ -n "$t1" ] && [ -n "$t2" ]; } || fail turn-header
-  [ "$t2" = "$((t1 + 1))" ] || fail turn-monotonic
-  sed -n '2p' "$SIDECAR" | grep -qE '^#ts=[0-9]+$' || fail ts-header
 }
 
 # ── stdin 파싱 가드 (malformed/빈 stdin → set -e 사망 금지, 비차단 계약대로 경고 1줄 + exit 0)
