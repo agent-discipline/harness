@@ -6,7 +6,7 @@
 #   - 기록 = <state_dir>/<sid>.reread, 줄마다 `<epoch>\t<canonical 경로>` — 같은 경로는 최신 시각 한 줄로 교체.
 #   - 메인의 Read 만(agent_id 있으면 무시 — 서브에이전트가 읽어도 메인 맥락은 복구되지 않는다).
 #   - 대상 = 상태 TASK_PATH 의 requirement-spec.md·log.md·decisions.md (canonical 일치). 그 밖의 Read 는 무시.
-#   - offset·limit 부분 읽기도 읽은 것으로 본다(전부 읽었는지는 훅이 알 수 없다 — README 한계).
+#   - offset·limit 이 값으로 들어온 부분 읽기는 기록하지 않는다(둘 다 없거나 null 인 전체 Read 만 — v4.6 I1).
 #   - 매 호출 세션 표시 <sid>.reread-seen 을 보장한다(없을 때만 생성 — session-mode-guard 가 그 세션 것만 확인).
 #   - 상태파일은 읽기만 한다. 쓰기 = flock + temp + mv. **어떤 입력·실패에서도 exit 0**(관측 훅 — I7).
 
@@ -21,13 +21,14 @@ HOOK_INPUT=$(cat 2>/dev/null || true)
 FIELDS=""
 [ -n "$HOOK_INPUT" ] && FIELDS=$(printf '%s' "$HOOK_INPUT" | jq -j '
   if type != "object" then error("not object") else . end
-  | [.tool_name, .agent_id, .session_id, .cwd, .tool_input.file_path]
+  | [.tool_name, .agent_id, .session_id, .cwd, .tool_input.file_path,
+     (if .tool_input.offset != null or .tool_input.limit != null then "1" else null end)]
   | map(if . == null then "" else tostring | gsub("[\n\u001f]"; " ") end) | join("\u001f")' 2>/dev/null) || FIELDS=""
 if [ -z "$FIELDS" ]; then
   echo "[reread-track] 경고: stdin JSON 파싱 실패(빈 입력 포함) — 기록 생략(통과)." >&2
   exit 0
 fi
-IFS=$'\x1f' read -r TOOL_NAME AGENT_ID RAW_SID CWD FILE_PATH <<< "$FIELDS"
+IFS=$'\x1f' read -r TOOL_NAME AGENT_ID RAW_SID CWD FILE_PATH PARTIAL <<< "$FIELDS"
 [ "${TOOL_NAME:-}" = "Read" ] || exit 0
 case "${RAW_SID:-}" in ''|*[!A-Za-z0-9-]*) exit 0 ;; esac
 SESSION_ID="$RAW_SID"
@@ -49,6 +50,7 @@ if [ ! -e "$SEEN" ]; then
 fi
 
 [ -z "${AGENT_ID:-}" ] || exit 0
+[ -z "${PARTIAL:-}" ] || exit 0   # 부분 읽기(offset·limit)는 읽은 것으로 세지 않는다(v4.6 I1) — 세션 표시는 위에서 이미 만들었다
 # 대상 이름이 아니면 상태파일·realpath 전에 끝낸다(성능 — 대부분의 Read 가 여기서 끝난다).
 case "${FILE_PATH##*/}" in requirement-spec.md|log.md|decisions.md) ;; *) exit 0 ;; esac
 

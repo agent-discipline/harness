@@ -366,7 +366,7 @@ reread_gate() {
   {
     echo "[gate-guard] 압축 뒤 작업 기록 미독 — 다음 파일을 Read 한 뒤 다시 시도:"
     printf '%s\n' "$unread" | sed 's/^/  /'
-    echo "(offset·limit 부분 읽기도 인정)"
+    echo "(offset·limit 없이 파일 전체를 Read 해야 인정)"
   } >&2
   exit 2
 }
