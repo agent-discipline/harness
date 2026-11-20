@@ -21,6 +21,7 @@
 #   - MODE=lazy:
 #       · PostToolUse(Edit|Write) → PENDING_GATE=1 (diff 발생 = 게이트 빚짐)
 #       · PreToolUse(Edit|Write)  → PENDING_GATE=1 이면 차단(직전 diff 게이트 먼저) — 통과 시 `set-state.sh gate-pass`
+#   - 압축 뒤 미독(v4.5): 위 판정을 모두 통과한 PreToolUse L1 쓰기(메인만)를 작업 기록 Read 전까지 차단(reread_gate).
 #   - 상태파일(.claude/lazymode/*) Edit/Write/MultiEdit → classify 이전에 **하드 거부(exit 2, MODE 무관)**:
 #       상태는 훅(state-lib)이 flock 원자쓰기로 소유 — Claude가 SPEC/MODE/DEBT 를 직접 써서 게이트를
 #       우회하는 것을 차단. Bash 경로는 훅 bash 쓰기와 구분 불가라 소프트 리마인더만(§0.6 FP).
@@ -298,6 +299,20 @@ case "$CFILE" in
     ;;
 esac
 
+# #1b) 고정 지시 파일(~/.claude/standing-instructions.md) 쓰기 → 네이티브 승인(ask) (v4.5 계약 보충 33).
+#    모든 세션에 매 턴 주입되므로 SPEC/MODE·agent_id 와 무관하게 사용자 확인을 받는다. 양쪽 모두 canon_file 로
+#    해소해 비교(아직 없는 파일·심링크 경유도 같다). HOME 이 비었거나 해소 실패면 이 판정은 건너뛴다(종전 흐름).
+#    JSON 형식은 git-guard emit_ask 와 같다(stdout + exit 0). PostToolUse·Bash 는 대상 아님(Bash 는 한계).
+if [ "$EVENT" = "PreToolUse" ] && [ -n "${HOME:-}" ] \
+   && SI_CANON=$(canon_file "$HOME/.claude/standing-instructions.md") && [ -n "$SI_CANON" ] \
+   && [ "$CFILE" = "$SI_CANON" ]; then
+  jq -cn --arg r "[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}' \
+    2>/dev/null \
+    || printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요."}}\n'
+  exit 0
+fi
+
 # 2) L0/L1 분류 (상태검증보다 먼저 — L0면 상태검증 없이 통과). **기본 L1 — 불변식 반전(task-03b 재설계)**:
 #    classify_l0l1 이 두 양성경로(A repo내 순수문서 / B repo-밖 안전영역)에서만 rc 0(L0), 그 외 전부 rc 1(L1).
 #    단 원본 .git 컴포넌트(GIT_COMPONENT=1)면 classify 결과를 무시하고 L1(#2).
@@ -339,6 +354,23 @@ MODE=$(state_get "$STATE" MODE)
 SPEC=$(state_get "$STATE" SPEC)
 PENDING=$(state_get "$STATE" PENDING_GATE)
 
+# 압축 뒤 작업 기록 미독 차단(v4.5 I5②) — 종전 차단 사유를 모두 통과한 PreToolUse·메인(agent_id 없음) L1 쓰기만.
+#   미독 = <sid>.compact 가 있고 TASK_PATH 의 대상(spec·log·있으면 decisions)을 그 뒤에 Read 하지 않음(state-lib).
+#   판정 불가(state_reread_unread rc 1)면 새 차단을 걸지 않는다(I7 — 종전 판정만). 통과면 return 0.
+reread_gate() {
+  local unread
+  [ "$EVENT" = "PreToolUse" ] || return 0
+  [ -z "$(echo "$HOOK_INPUT" | jq -r '.agent_id // empty' 2>/dev/null || true)" ] || return 0
+  unread=$(state_reread_unread "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)") || return 0
+  [ -n "$unread" ] || return 0
+  {
+    echo "[gate-guard] 압축 뒤 작업 기록 미독 — 다음 파일을 Read 한 뒤 다시 시도:"
+    printf '%s\n' "$unread" | sed 's/^/  /'
+    echo "(offset·limit 부분 읽기도 인정)"
+  } >&2
+  exit 2
+}
+
 # PENDING_GATE 세팅 (state-lib 원자 writer 경유 — flock+temp+mv). 실패 = fail-closed.
 set_pending() {
   if ! state_set "$STATE" PENDING_GATE 1; then
@@ -379,6 +411,7 @@ fi
 
 # 3) auto → 구현 게이트 없음 (명세 합의 후 자율 실행 — 검증·리뷰는 stakes 비례)
 if [ "$MODE" = "auto" ]; then
+  reread_gate
   exit 0
 fi
 
@@ -394,6 +427,7 @@ if [ "$MODE" = "lazy" ]; then
       echo "[gate-guard] 직전 diff의 이해 게이트가 미처리(PENDING_GATE=1)입니다. 먼저 (1) before/after 스니펫 기록 → (2) 사용자 주관식 설명 → (3) 판정 워커 verdict=pass 를 거치고, 통과하면 'bash ~/.claude/hooks/set-state.sh gate-pass .claude/lazymode/$SESSION_ID' 로 내린 뒤 다시 시도하세요. (implementation-lazymode.md §1·§4)" >&2
       exit 2
     fi
+    reread_gate
     exit 0
   fi
 fi

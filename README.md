@@ -107,6 +107,27 @@ Opus 메인 × 4방식(혼자·Haiku·Sonnet·Opus 탐색 워커 `explorer`) × 
 
 적용 기준표·파일별 패치(before/after)·리뷰 기록: `docs/plans/2026-11-06/harness-v4-3/`(전신 `docs/plans/2026-11-02/agent-search-findings/`)
 
+## 실측 — 압축 뒤 응답 언어 (v4.5, 2026-11-19)
+
+v4.5의 고정 지시 재주입(아래 "압축 뒤 재독 · 선택 질문 기록 · 고정 지시" 절)은 [compaction-experiment](https://github.com/agent-discipline/compaction-experiment)의 결과에서 나왔다. 그 실험에서 대화에만 있던 지시 "한국어로 답하기"는 압축이 일어난 Haiku 실행 6회 모두에서 깨졌고, 압축 직후 사용자 메시지 원문을 다시 넣어도(아웃박스) 3회 모두 깨졌다. 그래서 원래 계획이던 아웃박스(NEXT N5) 대신 고정 지시를 매 턴 넣는 방식을 택했다.
+
+확인 실행은 같은 실험 저장소에 조건 `standing`으로 덧붙였다(Haiku 3회). 압축 설정은 compact 조건과 같고, 하네스 훅과 같은 문구 `[고정 지시] 사용자에게 하는 응답은 항상 한국어로 쓴다(코드, 명령, 인용은 원문 그대로).`를 매 턴과 압축 직후에 넣었다. 세션 기록에서 이 줄이 매 턴과 압축마다 맥락에 들어간 것을 확인했다.
+
+결과는 "줄었지만 없애지 못했다"이다. 아래 표는 첫 압축 뒤 응답의 한글 비율(한글 ÷ (한글 + 영문 글자))과 K8(턴의 한글 비율 0.5 미만이면 위반) 결과를 조건별로 보여 준다.
+
+| 조건 | 첫 압축 뒤 한글 비율 | K8 위반 실행 수 |
+|---|---|---|
+| control (압축 없음) | 0.930 (압축 없이 전체) | 0 / 3 |
+| compact | 0.257 | 3 / 3 |
+| outbox (원문 재주입) | 0.229 | 3 / 3 |
+| standing (고정 지시 재주입) | 0.557 (실행별 0.772, 0.460, 0.447) | 3 / 3 |
+
+- standing 3회 중 2회(r2, r3)는 뒤 단계에서 에이전트가 "예산 소진"이라며 도구를 쓰지 않고 작업을 거부했다. 실제 한도에는 도달하지 않았고, 본 실행 9회에는 없던 일이다. 거부 턴의 응답은 한국어라 이 두 실행의 한글 비율을 올리는 쪽으로 작용한다. 이 거부가 고정 지시 때문인지는 알 수 없다.
+- 그래서 r2·r3은 구현 결과 비교에 쓸 수 없고, 위 0.557을 재주입의 효과 크기로 읽지 않는다.
+- standing에서만 단계별 커밋 누락(K7a)이 3회 모두 나왔다. 원인은 확인하지 않았다.
+
+자세한 표와 한계는 compaction-experiment README의 "후속 조건: standing" 절, 집계는 그 저장소 `docs/results/standing-2026-11-19/`에 있다. 실제 하네스 세션에서는 매 턴 재주입 끝에 고정 지시 줄이 붙는 것과, 압축 뒤 재독 안내와 미독 파일 목록이 들어갔다가 세 파일을 읽은 뒤 사라지는 것까지 관측했다. 미독 상태의 구현 쓰기 차단은 실제 세션에서 아직 시도하지 않았다. 그 기록은 `docs/plans/2026-11-19/decision-archive-compact-reread/log.md`에 있다.
+
 ---
 
 ## repo 구조
@@ -134,16 +155,24 @@ Opus 메인 × 4방식(혼자·Haiku·Sonnet·Opus 탐색 워커 `explorer`) × 
 │   ├── state-lib.sh           #   상태 SCHEMA=4 (MODE·SPEC·PENDING_GATE·DEBT·TASK_PATH) — flock 원자쓰기·quarantine · 경로 해소(조상 앵커→git 워크트리 루트→cwd) · 자기무시 .gitignore 보장(rc 0/1/2/3)
 │   ├── set-state.sh           #   상태 기록 유일 경로 CLI (mode | spec-approved | emergency | debt-clear | gate-pass)
 │   ├── task-mode-guard.sh     #   새 작업 폴더(spec·log 생성) → SPEC·MODE 리셋 (DEBT 는 유지 — 크로스-태스크 빚)
-│   ├── session-mode-guard.sh  #   SessionStart 상태 시드·복구·quarantine
-│   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT) 재주입 (컨텍스트 요약 후 일관성)
+│   ├── session-mode-guard.sh  #   SessionStart 상태 시드·복구·quarantine · 압축 시각(.compact) 기록 · 고정 지시
+│   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT)·압축 뒤 미독·고정 지시(~/.claude/standing-instructions.md) 재주입
 │   ├── git-guard.sh           #   push 네이티브 승인(ask) 위임 + 커밋/gh 발행 attribution 하드 차단
 │   ├── codex-scan.sh          #   codex 호출 명령의 시크릿 backstop
 │   ├── capture-prompt.sh      #   현재 턴 프롬프트 사이드카(.prompt/.turn — 상태 디렉토리에 기록, 현 소비자 없음·이월)
 │   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(.events — InstructionsLoaded·ConfigChange·SubagentStop)
+│   ├── capture-decision.sh    #   선택 질문(AskUserQuestion)의 질문·선택지·답 → 작업 폴더 decisions.md (작업 폴더 전에는 .decisions 사이드카에 쌓았다 옮김)
+│   ├── reread-track.sh        #   작업 기록(spec·log·decisions.md) Read 시각 → .reread 사이드카 (압축 뒤 재독 판정)
 │   ├── deploy.sh              #   manifest diff → 백업+원자 교체 → stale 최상위 파일 정리 → smoke (실패 시 D9 자동 복원)
 │   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증, 258 tests)
 └── docs/                      # measurement-log + 작업 기록 (L0)
 ```
+
+### 압축 뒤 재독 · 선택 질문 기록 · 고정 지시 (v4.5)
+
+- 압축(SessionStart `source=compact`) 시각을 `.compact`에, 작업 기록을 Read 한 시각을 `.reread`에 남긴다. 압축 뒤 `TASK_PATH`의 `requirement-spec.md`·`log.md`·(있으면) `decisions.md`를 모두 다시 읽기 전까지 gate-guard가 메인의 L1 쓰기를 막고, reinject가 매 턴 읽을 파일을 알린다. 사이드카는 상태 디렉토리 안이라 Edit·Write와 흔한 Bash 쓰기 형태만 막는다. Bash의 다른 방법으로 사이드카를 고치면 차단이 풀린다(훅이 Bash의 뜻을 볼 수 없는 한계 — 상태파일과 같은 종류). 압축 시각은 그 세션에서 reread-track이 한 번이라도 돌아 세션 표시 파일 `<sid>.reread-seen`이 있을 때만 기록한다(Read 훅 등록 전에 배포돼도 쓰기가 영구히 막히지 않게 — 세션의 첫 Read 전에 압축되면 재독 강제가 걸리지 않는다).
+- 한계: ① `offset`·`limit`이 있는 부분 읽기도 읽은 것으로 본다(전부 읽었는지 훅은 모른다) ② 서브에이전트의 Read는 세지 않는다(메인 맥락이 복구되지 않으므로) ③ 읽었다고 그 내용을 따른다는 보장은 없다 ④ `TASK_PATH`가 없는 세션(작업 폴더를 만들지 않은 세션)에는 재독 강제가 없다 ⑤ 시각은 초 단위라 압축과 같은 초에 일어난 Read는 압축 뒤로 본다 ⑥ `decisions.md`를 직접 고치는 것은 막지 않는다(절차 규칙) ⑦ 메인이 읽지 않은 채 워커에게 구현을 맡기면 워커의 쓰기는 막히지 않는다 ⑧ 이름이 `requirement-spec.md`·`log.md`·`decisions.md`가 아닌 경로(다른 이름의 심링크 등)로 읽으면 세지 않는다 ⑨ 읽기 훅 등록을 세션 도중에 해제하면 그 세션의 미독 차단은 사용자가 `<sid>.compact`를 지워야 풀린다 ⑩ 압축을 한 번 겪은 세션에서는 새 작업 폴더의 명세서·log도 Write 뒤에 Read 해야 구현 쓰기가 풀린다(Write는 읽은 것으로 세지 않는다) ⑪ 잠금에 실패하면 빈 `decisions.md`가 남을 수 있고, 압축 뒤에는 그 파일도 한 번 Read 해야 한다 ⑫ 고정 지시 파일을 Bash로 쓰는 것은 막지 않는다.
+- 고정 지시: `~/.claude/standing-instructions.md`의 줄(`#` 줄·빈 줄 제외)을 `[고정 지시] ` 접두로 매 턴과 세션 시작·압축 직후에 넣는다. 본문 1,500자에서 자른다. 이 파일을 Edit·Write로 고치면 gate-guard가 네이티브 승인 창(ask)을 띄운다(모든 세션에 매 턴 들어가므로 — 서브에이전트 호출·심링크 경유도 같다). 파일이 없으면 종전 출력과 같다.
 
 ## 검증 강도 (stakes 비례 — core §4)
 

@@ -1,14 +1,18 @@
 a482b885eb9f790650845f61a2873cecbd7da0e1415c68841f39f99c0bc022e1  baseline.manifest
 f211184fe40bf182b2453af9fc525cf43388617c551186c7e0bb75509f49e112  cases/codex-scan.sh
 6d3d514c3661abc33f518b78f5e7213d0c1f2b0d8c569c05f0857f2f3c619882  cases/cwd-resolution.sh
+b979c4dec73f471fa3260beeb2ecad8d8a0f00f830218f3b39a6692716c2b103  cases/decision-reread.sh
 dbb769f9ba80c4318fa9b4278328373249d990124dc18f87834a19d34791fe04  cases/detect-layer.sh
 e7182d053acbe1edb76e96824d0a21fb027c0c63d527598b1862091e866c9042  cases/gate-guard.sh
 b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guard.sh
 1988fc683309c8495c1500663ba1a584ac73cdbc5a876d67fdf7ae9b4796fde5  cases/misc-guards.sh
 a300b3e17b2235035e27c1c9f6b0baa59d184dafd67d8951ea7967b4cd0d0939  cases/sidecar-docsroot.sh
 90897bfb9e7914f528fb039a2d6a31d2263a7e03faa0498dd8fbb25bbd4c52a3  cases/state-schema.sh
+871fa929280f913be86d4e167604b7cee135b512dbe6440c9ac9248f1c252e45  fixtures/legacy/reinject-mode.sh
+43a969b2e2169e61b1fbe03aee145b18b9a8a516d581e827fa680fdc49130642  fixtures/legacy/session-mode-guard.sh
+d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legacy/state-lib.sh
 6a778fcb02db6ec70cf1b1d559ac8e28463c93d1339d66be2f85698ac26f6565  lib.sh
-777067bad35fd92d87e997a08a22b9994faff59eb3d99329e7197aca863c4f81  run.sh
+d285f2e52c48fd37e067f49195afad6d74f48915806f416044ceb1115eb7ce87  run.sh
 # test: test_cp_01
 # test: test_cp_02
 # test: test_cp_03
@@ -83,6 +87,113 @@ a300b3e17b2235035e27c1c9f6b0baa59d184dafd67d8951ea7967b4cd0d0939  cases/sidecar-
 # test: test_dl_unknown_event
 # test: test_dl_unreadable_sidecar_preserved
 # test: test_dl_utf8_boundary_truncate
+# test: test_dr_ad_01
+# test: test_dr_ad_02
+# test: test_dr_ad_03
+# test: test_dr_ad_04
+# test: test_dr_ad_05
+# test: test_dr_ad_06
+# test: test_dr_ad_07
+# test: test_dr_ad_07b
+# test: test_dr_ad_08
+# test: test_dr_ad_08b
+# test: test_dr_ad_09
+# test: test_dr_ad_10
+# test: test_dr_ad_11
+# test: test_dr_ad_12
+# test: test_dr_ad_12b
+# test: test_dr_ad_13
+# test: test_dr_ad_14
+# test: test_dr_ad_15
+# test: test_dr_ad_15b
+# test: test_dr_ad_16
+# test: test_dr_ad_17
+# test: test_dr_ad_18
+# test: test_dr_ad_19
+# test: test_dr_ad_20
+# test: test_dr_ad_20b
+# test: test_dr_ad_21
+# test: test_dr_ad_22
+# test: test_dr_ad_23
+# test: test_dr_ad_24
+# test: test_dr_ad_24b
+# test: test_dr_ad_25
+# test: test_dr_ad_26
+# test: test_dr_bl_01
+# test: test_dr_bl_02
+# test: test_dr_bl_03
+# test: test_dr_bl_04
+# test: test_dr_bl_05
+# test: test_dr_bl_06
+# test: test_dr_bl_07
+# test: test_dr_bl_08
+# test: test_dr_bl_08b
+# test: test_dr_bl_08c
+# test: test_dr_bl_09
+# test: test_dr_bl_10
+# test: test_dr_bl_11
+# test: test_dr_bl_11b
+# test: test_dr_bl_12
+# test: test_dr_cm_01
+# test: test_dr_cm_02
+# test: test_dr_cm_03
+# test: test_dr_cm_04
+# test: test_dr_cp_01
+# test: test_dr_cp_02
+# test: test_dr_cp_03
+# test: test_dr_cp_04
+# test: test_dr_cp_05
+# test: test_dr_cp_06
+# test: test_dr_cp_07
+# test: test_dr_cp_08
+# test: test_dr_cp_09
+# test: test_dr_cp_10
+# test: test_dr_cp_11
+# test: test_dr_cp_12
+# test: test_dr_cp_13
+# test: test_dr_pv_01
+# test: test_dr_ri_01
+# test: test_dr_ri_02
+# test: test_dr_ri_03
+# test: test_dr_rr_01
+# test: test_dr_rr_02
+# test: test_dr_rr_03
+# test: test_dr_rr_04
+# test: test_dr_rr_05
+# test: test_dr_rr_06
+# test: test_dr_rr_06b
+# test: test_dr_rr_07
+# test: test_dr_rr_07b
+# test: test_dr_rr_08
+# test: test_dr_rr_09
+# test: test_dr_rr_10
+# test: test_dr_rr_11
+# test: test_dr_rr_12
+# test: test_dr_rr_13
+# test: test_dr_rr_14
+# test: test_dr_rr_15
+# test: test_dr_rr_16
+# test: test_dr_rr_17
+# test: test_dr_rr_18
+# test: test_dr_sa_01
+# test: test_dr_sa_02
+# test: test_dr_sa_03
+# test: test_dr_sa_04
+# test: test_dr_sa_05
+# test: test_dr_sa_06
+# test: test_dr_sa_07
+# test: test_dr_si_01
+# test: test_dr_si_02
+# test: test_dr_si_03
+# test: test_dr_si_04
+# test: test_dr_si_05
+# test: test_dr_si_05b
+# test: test_dr_si_05c
+# test: test_dr_si_06
+# test: test_dr_si_07
+# test: test_dr_si_08
+# test: test_dr_si_09
+# test: test_dr_si_10
 # test: test_gg_ask_arith_shift
 # test: test_gg_ask_basic
 # test: test_gg_ask_cd

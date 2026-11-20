@@ -1,0 +1,30 @@
+{
+ "session_id": "11dd52af-0e61-45bd-9098-f0247a6c0b5e",
+ "transcript_path": "/home/jun/.claude/projects/-home-jun-project-agent-discipline/11dd52af-0e61-45bd-9098-f0247a6c0b5e.jsonl",
+ "cwd": "/home/jun/project/agent-discipline/.claude",
+ "scratchpad_dir": "/tmp/claude-1000/-home-jun-project-agent-discipline/11dd52af-0e61-45bd-9098-f0247a6c0b5e/scratchpad",
+ "prompt_id": "bda136a6-3324-4bd6-a166-1387402783fa",
+ "permission_mode": "auto",
+ "effort": {
+  "level": "medium"
+ },
+ "hook_event_name": "PostToolUse",
+ "tool_name": "Read",
+ "tool_input": {
+  "file_path": "/home/jun/project/agent-discipline/compaction-experiment/README.md",
+  "offset": 40,
+  "limit": 25
+ },
+ "tool_response": {
+  "type": "text",
+  "file": {
+   "filePath": "/home/jun/project/agent-discipline/compaction-experiment/README.md",
+   "content": "### 조건\n\n세 조건은 과제, 모델, 메시지가 모두 같고 압축 설정만 다르다.\n\n| 조건 | 설정 | 실제로 일어난 일 (Haiku) |\n|---|---|---|\n| control (대조군) | 압축 한도를 기본값으로 둔다 | 압축 0회. 맥락이 36만~40만 토큰까지 커졌다 |\n| compact | 압축 한도를 10만 토큰으로 낮춘다 | 압축 11~14…(잘라 냄)",
+   "numLines": 25,
+   "startLine": 40,
+   "totalLines": 147
+  }
+ },
+ "tool_use_id": "toolu_01MDGJ1S5KW5K4nweWk4wKGB",
+ "duration_ms": 40
+}
