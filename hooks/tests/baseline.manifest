@@ -1,2 +1,36 @@
 # phase-01 baseline — 현행 훅의 결함 재현(red) 케이스. 형식: <test-id> <assert-id>
 # 수정 페이즈 통과 시 이 파일에서 해당 행을 제거한다(전체 suite green 지향).
+# implementation-by-workers task 03 — worker-notice.sh(알림 기능 미구현 기준 2f07fb0 에서 blind 작성). 구현 후 green 이면 이 묶음을 지운다.
+test_wn_01 wn01-Edit-first-notice
+test_wn_02 wn02-first-write-notice
+test_wn_03 wn03-a-first-notice
+test_wn_03b wn03b-first-notice
+test_wn_04 wn04-session1-first-notice
+test_wn_05 wn05-no-taskpath-first-notice
+test_wn_05b wn05b-before-compact-notice
+test_wn_06 wn06-control-main-first-notice
+test_wn_06b wn06b-empty-string-is-main-notice
+test_wn_07 wn07-control-l1-after-l0-notice
+test_wn_07b wn07b-docs-core-md-notice
+test_wn_07c wn07c-repo-hooks-notice
+test_wn_07d wn07d-claude-deploy-hooks-notice
+test_wn_08 wn08-control-auto-same-folder-notice
+test_wn_08b wn08b-control-debt-cleared-notice
+test_wn_08c wn08c-control-after-debt-clear-notice
+test_wn_09 wn09-first-pass-after-blocks-notice
+test_wn_09b wn09b-first-pass-after-lock-notice
+test_wn_09c wn09c-first-pass-after-reread-notice
+test_wn_09d wn09d-first-pass-after-reset-notice
+test_wn_09e wn09e-control-first-pass-notice
+test_wn_10 wn10-control-l1-after-ask-notice
+test_wn_11 wn11-control-pre-after-notice
+test_wn_12 notice-present-auto-first
+test_wn_12b wn12b-first-notice
+test_wn_13 wn13-control-after-writable-notice
+test_wn_13b wn13b-control-real-flock-notice
+test_wn_13c wn13c-control-normal-notice
+test_wn_14 wn14-exactly-one-notice
+test_wn_15 wn15-notice-notice
+test_wn_15b wn15b-notice-notice
+test_wn_15c wn15c-first-notice
+test_wn_15d wn15d-subdir-cwd-notice-notice
