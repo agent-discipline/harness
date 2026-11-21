@@ -62,6 +62,7 @@ wn_run_with() { # <hook 절대경로> <json> [태그]
     XDG_CONFIG_HOME="$XDG_DIR" bash "$1" > "$capture/$tag.out" 2> "$capture/$tag.err"
   HOOK_EXIT=$?
   set -e
+  WN_LAST_STDOUT_FILE="$capture/$tag.out"                 # 바이트 단위 판정용($(...) 는 끝 개행을 지운다)
   HOOK_STDOUT=$(cat "$capture/$tag.out")
   HOOK_STDERR=$(cat "$capture/$tag.err")
 }
@@ -88,11 +89,15 @@ wn_assert_notice() { # <assert-id>
 wn_assert_quiet() { # <want-exit> <assert-id>
   assert_exit "$1" "$2-exit"
   [ -z "$HOOK_STDOUT" ] || { echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 240)"; fail "$2-stdout-empty"; }
+  [ ! -s "${WN_LAST_STDOUT_FILE:-/dev/null}" ] || { echo "  [dbg] stdout 바이트=$(wc -c < "$WN_LAST_STDOUT_FILE")"; fail "$2-stdout-zero-bytes"; }   # 빈 줄 하나도 출력이다
 }
 # stdout 이 비었거나 알림 JSON 하나 — 깨진 JSON·JSON 둘 이어 붙임 금지(실패 정책 사례용)
 wn_assert_empty_or_notice() { # <assert-id>
   if [ -n "$HOOK_STDOUT" ] && ! wn_is_notice "$HOOK_STDOUT"; then
     echo "  [dbg] stdout=$(printf '%s' "$HOOK_STDOUT" | head -c 240)"; fail "$1-wellformed"
+  fi
+  if [ -z "$HOOK_STDOUT" ] && [ -s "${WN_LAST_STDOUT_FILE:-/dev/null}" ]; then   # 공백·개행뿐인 출력 = 비지 않은 깨진 출력
+    echo "  [dbg] stdout 바이트=$(wc -c < "$WN_LAST_STDOUT_FILE")"; fail "$1-wellformed-zero-bytes"
   fi
 }
 
@@ -551,12 +556,15 @@ WRAP
     wn_gate PreToolUse Write "$REPO/src/a.c"
   assert_exit 0 wn13b-flock-fail-pass
   wn_assert_empty_or_notice wn13b-flock-fail
+  # 재현 성립: 알림 기록이 상태 lock 과 다른 잠금(gate-guard.sh worker_notice 6b0a43c — <sidecar>.lock)을 잡다 실패했다.
+  #   구현이 잠금 방식을 바꿔 래퍼가 안 걸리면 이 단언이 빨강으로 알린다(사례가 조용히 약해지지 않게).
+  [ -s "$hits" ] || fail wn13b-lock-failure-reproduced
   if [ -s "$hits" ] && [ -n "$HOOK_STDOUT" ]; then           # 구현이 별도 잠금을 쓰다 실패했다면 알림은 없어야 한다
     echo "  [dbg] hits=$(head -c 160 "$hits")"; fail wn13b-lock-failed-but-noticed
   fi
-  local fresh; fresh=$(wn_task_dir flock-control)            # 짝: 래퍼 없이 새 폴더 → 낸다
-  wn_state auto 0 0 1 "$fresh"
-  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn13b-control-real-flock
+  # 짝: 래퍼 없이 **같은 폴더** → 낸다. 잠금이 실패한 호출은 기록하지 못했으니 "한 번"을 소비하지 않았다
+  #   (명세: 잠금 실패 → 알림 없이 통과. 기록이 없으니 다음 통과가 그 폴더의 첫 알림이다).
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn13b-control-real-flock-same-folder
 }
 
 test_wn_13c() { # [명세 실패 정책: JSON 생성 실패·임시 파일 실패 → 통과 우선] jq -n 실패 · TMPDIR 무효 → exit 0·깨진 JSON 없음
@@ -565,29 +573,43 @@ test_wn_13c() { # [명세 실패 정책: JSON 생성 실패·임시 파일 실�
   local fake="$SANDBOX/fakejq"; mkdir -p "$fake"
   local real_jq; real_jq=$(command -v jq) || fail wn13c-jq-missing
   # 래퍼: 입력 없이 JSON 을 만드는 호출(-n·--null-input, 묶음 짧은 옵션 포함)만 실패, 입력 파싱은 진짜 jq.
+  local hits="$SANDBOX/jq.hits"; : > "$hits"
   cat > "$fake/jq" <<'WRAP'
 #!/bin/bash
 for argument in "$@"; do
   case "$argument" in
-    --null-input) exit 5 ;;
+    --null-input) echo hit >> "$WN_JQ_HITS"; exit 5 ;;
     --*) ;;
-    -*n*) exit 5 ;;
+    -*n*) echo hit >> "$WN_JQ_HITS"; exit 5 ;;
   esac
 done
 exec "$WN_REAL_JQ" "$@"
 WRAP
   chmod +x "$fake/jq"
-  PATH="$fake:$PATH" WN_REAL_JQ="$real_jq" wn_gate PreToolUse Write "$REPO/src/a.c"
+  # 입력 JSON 은 래퍼를 켜기 **전에** 만든다 — wn_json 도 jq -n 을 쓰므로, 래퍼 아래에서 만들면 훅이 빈 입력을 받아
+  #   "파싱 실패 → 통과" 로 끝나 이 사례가 아무것도 시험하지 않는다(2026-11-21 감사에서 실측한 결함).
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  PATH="$fake:$PATH" WN_REAL_JQ="$real_jq" WN_JQ_HITS="$hits" wn_gate_json "$json"
   assert_exit 0 wn13c-jq-null-input-fail-pass
   wn_assert_empty_or_notice wn13c-jq-null-input-fail
+  assert_stderr_no_match 'stdin JSON 파싱 실패' wn13c-input-parsed            # 재현 성립: 훅이 입력은 제대로 읽었다
+  # 재현 성립: 알림 JSON 생성(jq -n — gate-guard.sh worker_notice 6b0a43c 의 구현 방식에 기댄다)에 래퍼가 걸렸다.
+  #   구현이 jq -n 을 안 쓰게 바뀌면 이 단언이 빨강으로 알린다(조용히 약해지지 않게).
+  [ -s "$hits" ] || fail wn13c-jq-null-input-reproduced
   local folder_tmp; folder_tmp=$(wn_task_dir tmpdir-fail)
   wn_state auto 0 0 1 "$folder_tmp"
+  # 참고: 현 구현은 mktemp 에 상태 디렉토리를 직접 주므로 TMPDIR 무효는 영향이 없다 — 구현이 TMPDIR 기본값을 쓰게 바뀔 때의 회귀 방지용.
   TMPDIR="$SANDBOX/no-such-tmpdir" wn_gate PreToolUse Write "$REPO/src/a.c"
   assert_exit 0 wn13c-bad-tmpdir-pass
   wn_assert_empty_or_notice wn13c-bad-tmpdir
   local fresh; fresh=$(wn_task_dir jq-control)               # 짝: 정상 환경의 새 폴더 → 낸다
   wn_state auto 0 0 1 "$fresh"
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn13c-control-normal
+  # JSON 생성이 실패한 호출은 "한 번"을 소비하지 않는다 — 그 폴더로 돌아가 정상 환경이면 낸다.
+  #   (판단: 명세 53행 "실패하면 알림을 내지 않고 조용히 통과" + 실패한 기록·잠금이 소비하지 않는 것(wn_13·13b)과 같은 규칙으로 본다.
+  #    알림이 생략된 채 기억만 남으면 그 폴더에서는 영영 안 뜬다.)
+  wn_state auto 0 0 1 "$folder"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn13c-jq-fail-not-consumed
 }
 
 # ══ 14 동시 호출 ═══════════════════════════════════════════════════════════
@@ -621,6 +643,66 @@ test_wn_14() { # [명세 동시에 들어온 호출 중 하나만 낸다("이미
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn14-after-race-quiet
   assert_single_line SCHEMA wn14-schema-single
   assert_state SCHEMA 4 wn14-schema-intact
+}
+
+test_wn_14b() { # [명세 "이미 냈나 확인 → 기록"이 한 잠금 안] 확인과 기록 사이를 넓혀도 동시 8개 중 알림은 정확히 1개
+  # 왜 따로 있나: wn_14 만으로는 잠금을 빼도 통과한다(구현 뮤테이션 실측 40/40) — 8개 호출이 앞의 상태 lock 에서
+  #   직렬화된 뒤 경로 길이가 거의 같아, 호출 사이 간격이 "확인 → 기록" 창(몇 ms)보다 길다. 그래서 창을 넓힌다.
+  # 방법: PATH 앞의 mktemp 래퍼가 **상태 디렉토리 안** 임시 파일을 만들 때만 WN_MKTEMP_DELAY 초 잔 뒤 진짜 mktemp 를 부른다.
+  #   이 경로(유효 상태 + .gitignore 있음)에서 상태 디렉토리에 mktemp 를 쓰는 것은 알림 기록뿐이다(state_ensure_valid 는
+  #   유효 상태에 쓰지 않고, .gitignore 는 미리 둔다). 잠금이 없으면 8개가 모두 "아직 안 냄"을 확인한 채 잠들어 여럿이 낸다.
+  # 구현 의존(이름 무관 원칙의 예외 — 이 사례만): "기록이 상태 디렉토리의 mktemp 임시 파일 → mv" 라는 구현 방식에 기댄다
+  #   (gate-guard.sh worker_notice, 6b0a43c). 파일 이름에는 기대지 않는다. 구현이 mktemp 를 안 쓰게 바뀌면 래퍼가 걸리지
+  #   않아 이 사례가 조용히 약해지므로, 래퍼가 실제로 걸렸는지(재현 성립)를 먼저 단언한다 — 그때는 빨강으로 알린다.
+  # 지연 길이 근거: 1.5초. ① 거짓 초록 방지 — 잠금이 없을 때 빨강이 되려면 두 호출이 첫 호출의 기록(mv) 전에 확인만
+  #   하면 된다. 8개의 도착 간격(실측 수십~수백 ms)보다 1.5초가 몇 배 길어 느린 기계에서도 둘 이상이 창 안에 든다.
+  #   ② 거짓 빨강 방지 — 잠금이 있으면 첫 호출이 잠금을 쥔 채 1.5초 자고, 나머지는 flock -w 2 로 기다리다 "이미 냄"을 본다.
+  #   느린 기계에서 대기가 2초를 넘어도 그 호출은 "기록 실패 → 알림 생략"이라 알림은 늘지 않는다(1개 유지) — 지연이
+  #   길어질수록 알림이 줄 수는 있어도 늘 수는 없어, 초록 판정은 시간에 기대지 않는다. 0개도 실패로 본다(첫 호출은
+  #   잠금 대기 없이 기록하므로 정상 구현에서 0개는 나오지 않는다).
+  local folder; folder=$(wn_task_dir concurrent-widened)
+  wn_state auto 0 0 1 "$folder"
+  wn_gitignore
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  local fake="$SANDBOX/fakemktemp"; mkdir -p "$fake"
+  local real_mktemp; real_mktemp=$(command -v mktemp) || fail wn14b-mktemp-missing
+  local hits="$SANDBOX/mktemp.hits"; : > "$hits"
+  cat > "$fake/mktemp" <<'WRAP'
+#!/bin/bash
+for argument in "$@"; do
+  case "$argument" in
+    "$WN_STATE_DIR"/*) echo "$argument" >> "$WN_MKTEMP_HITS"; sleep "$WN_MKTEMP_DELAY"; break ;;
+  esac
+done
+exec "$WN_REAL_MKTEMP" "$@"
+WRAP
+  chmod +x "$fake/mktemp"
+  local race="$SANDBOX/race-widened"; mkdir -p "$race"
+  local pids="" index process
+  for index in 1 2 3 4 5 6 7 8; do
+    (
+      set +e
+      printf '%s' "$json" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        XDG_CONFIG_HOME="$XDG_DIR" PATH="$fake:$PATH" WN_REAL_MKTEMP="$real_mktemp" WN_MKTEMP_HITS="$hits" \
+        WN_MKTEMP_DELAY=1.5 WN_STATE_DIR="$STATE_DIR" \
+        bash "$HOOKS_DIR/gate-guard.sh" > "$race/out.$index" 2> "$race/err.$index"
+      echo $? > "$race/exit.$index"
+    ) &
+    pids="$pids $!"
+  done
+  for process in $pids; do wait "$process" || true; done
+  [ -s "$hits" ] || fail wn14b-widening-reproduced       # 래퍼가 기록 단계에 걸리지 않았다 = 창을 못 넓힘(사례 무력)
+  local notices=0 output
+  for index in 1 2 3 4 5 6 7 8; do
+    [ "$(cat "$race/exit.$index" 2>/dev/null)" = "0" ] || { echo "  [dbg] #$index exit=$(cat "$race/exit.$index" 2>/dev/null)"; fail wn14b-all-exit-0; }
+    output=$(cat "$race/out.$index")
+    if [ -n "$output" ]; then
+      wn_is_notice "$output" || { echo "  [dbg] #$index stdout=$(printf '%s' "$output" | head -c 160)"; fail wn14b-wellformed; }
+      notices=$((notices + 1))
+    fi
+  done
+  [ "$notices" = "1" ] || { echo "  [dbg] notices=$notices hits=$(wc -l < "$hits")"; fail wn14b-exactly-one-notice-widened; }
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn14b-after-race-quiet
 }
 
 # ══ 15 상태파일 불변 · 사이드카 자리 ═══════════════════════════════════════════

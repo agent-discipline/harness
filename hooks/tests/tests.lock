@@ -8,7 +8,7 @@ b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guar
 e2f784d96758c2257ef81e4d524d9e0412808385e99305095a269e9d9dcc0585  cases/misc-guards.sh
 4a8d45155c4c337e8dca574a8e6b3230188b627fc9664c04e34956624f1c1b1e  cases/sidecar-docsroot.sh
 90897bfb9e7914f528fb039a2d6a31d2263a7e03faa0498dd8fbb25bbd4c52a3  cases/state-schema.sh
-ac39c60c85fdaa1b88248d3bc79f7ef11197325429b7411824468a277233043f  cases/worker-notice.sh
+7f463f4951efb8246c83fe7802222e366f407de194f4fac49dd1fe418a8dcdd5  cases/worker-notice.sh
 0e455c60201dc0d2d6eef74dd569298a2b7ac92a33b8094850b616382bee2f3b  fixtures/legacy-2f07fb0/gate-guard.sh
 8e4a126b122c216e10d1a6c3f983e2e7554fadeff4cf674f6a31956f8eaa6478  fixtures/legacy-2f07fb0/state-lib.sh
 871fa929280f913be86d4e167604b7cee135b512dbe6440c9ac9248f1c252e45  fixtures/legacy/reinject-mode.sh
@@ -421,6 +421,7 @@ d285f2e52c48fd37e067f49195afad6d74f48915806f416044ceb1115eb7ce87  run.sh
 # test: test_wn_13b
 # test: test_wn_13c
 # test: test_wn_14
+# test: test_wn_14b
 # test: test_wn_15
 # test: test_wn_15b
 # test: test_wn_15c
