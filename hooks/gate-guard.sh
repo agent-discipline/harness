@@ -412,12 +412,12 @@ worker_notice() {
   # JSON 을 잠금 전에 만든다 — 생성이 실패하면 기록도 하지 않아 "한 번"이 남는다.
   notice_json=$(jq -cn --arg context "[gate-guard] 구현(중간↑ stakes)은 Opus 워커에게 맡긴다 — 메인은 브리핑·회수·판정. 낮은 stakes·긴급 수정은 메인이 직접 해도 된다(core §5). 이 알림은 작업 폴더마다 한 번만 뜬다." \
     '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$context}}' 2>/dev/null) && [ -n "$notice_json" ] || {
-    echo "[gate-guard] 경고: 구현 주체 알림 JSON 생성 실패 — 알림 생략(통과)." >&2; return 0; }
+    ( trap '' PIPE; echo "[gate-guard] 경고: 구현 주체 알림 JSON 생성 실패 — 알림 생략(통과)." >&2 ) || true; return 0; }
   # 상태 디렉토리 보호(심링크·gitignore) 재확인 — rc 1·2 면 쓰지 않는다. rc 3(환경 실패)은 상태 writer 와 같이 진행.
   directory_rc=0; state_ensure_dir "$state_dir" || directory_rc=$?
   case "$directory_rc" in
     0|3) ;;
-    *) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 상태 디렉토리 확보 실패 (원인: ${STATE_ENSURE_REASON:-unknown})." >&2
+    *) ( trap '' PIPE; echo "[gate-guard] 경고: 구현 주체 알림 생략 — 상태 디렉토리 확보 실패 (원인: ${STATE_ENSURE_REASON:-unknown})." >&2 ) || true
        return 0 ;;
   esac
   # "이미 냈나 확인 → 준비 → 출력 → 확정"을 한 잠금 안에서(동시 호출 중 하나만 낸다). 서브셸 rc:
@@ -464,14 +464,20 @@ worker_notice() {
     # ③ 확정
     mv -fT -- "$temporary_file" "$notice_sidecar" || { rm -f -- "$temporary_file"; exit 4; }
   ) 2>/dev/null || record_rc=$?
-  case "$record_rc" in
-    0|10) ;;
-    1) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 잠금 실패($notice_lock). 다음 쓰기에서 다시 시도(통과)." >&2 ;;
-    2) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 준비 실패(사이드카 $notice_sidecar 읽기 또는 임시 파일). 기록은 그대로(통과)." >&2 ;;
-    3) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 출력 실패(stdout). 기록은 그대로라 다음 쓰기에서 다시 뜬다(통과)." >&2 ;;
-    4) echo "[gate-guard] 경고: 구현 주체 알림은 나갔으나 확정 실패($notice_sidecar 이름 바꾸기) — 다음 쓰기에서 한 번 더 뜬다(통과)." >&2 ;;
-    *) echo "[gate-guard] 경고: 구현 주체 알림 — 예상 밖 실패(rc $record_rc). 기록 여부 불명(통과)." >&2 ;;
-  esac
+  # 경고 출력만 SIGPIPE 를 견딘다 — stdout·stderr 가 함께 끊긴 파이프면 경고를 쓰다 죽어(exit 141) 통과가 깨진다.
+  #   이 서브셸 안에만 trap 을 건다(함수·훅 전체로 번지지 않게). 경고를 2>/dev/null 로 버리지는 않는다 —
+  #   stderr 가 살아 있는 정상 실패 경로의 경고 한 줄은 그대로 나가야 한다.
+  (
+    trap '' PIPE
+    case "$record_rc" in
+      0|10) ;;
+      1) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 잠금 실패($notice_lock). 다음 쓰기에서 다시 시도(통과)." >&2 ;;
+      2) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 준비 실패(사이드카 $notice_sidecar 읽기 또는 임시 파일). 기록은 그대로(통과)." >&2 ;;
+      3) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 출력 실패(stdout). 기록은 그대로라 다음 쓰기에서 다시 뜬다(통과)." >&2 ;;
+      4) echo "[gate-guard] 경고: 구현 주체 알림은 나갔으나 확정 실패($notice_sidecar 이름 바꾸기) — 다음 쓰기에서 한 번 더 뜬다(통과)." >&2 ;;
+      *) echo "[gate-guard] 경고: 구현 주체 알림 — 예상 밖 실패(rc $record_rc). 기록 여부 불명(통과)." >&2 ;;
+    esac
+  ) || true
   return 0
 }
 
