@@ -379,6 +379,70 @@ set_pending() {
   fi
 }
 
+# 구현 주체 알림(implementation-by-workers task 03 — core §5): 메인이 L1 파일을 직접 쓰려 할 때 "구현은 워커에게"를
+#   **세션·작업 폴더(TASK_PATH)마다 한 번** 알린다. **막지 않는다** — 호출부는 이 함수 뒤에 그대로 exit 0 한다.
+#   부르는 자리 = auto 분기의 reread_gate 통과 뒤 하나뿐이다: 그 앞의 차단·ask·L0·PostToolUse·Bash 경로는 모두 이미
+#   종료했고 lazy 는 부르지 않는다. 여기서는 PreToolUse · 메인(agent_id 없음·빈 값·null — reread_gate 와 같은 기준) ·
+#   긴급 아님(DEBT≠1) 만 더 본다.
+#   왜 일반 echo 가 아니라 JSON 인가: 통과(exit 0)하면서 낸 일반 stdout·stderr 는 모델에게 보이지 않고
+#     hookSpecificOutput.additionalContext 만 보인다(11-21 실제 세션 실증 — 명세 §8 가정 2). 그래서 stdout 에는 이 JSON
+#     한 덩어리만 낸다. 정상 경로에서 stderr 에는 아무것도 더하지 않는다(기존 출력과 바이트까지 같게).
+#   왜 실패하면 조용히 통과하는가: 알림은 안내일 뿐이라 통과가 우선이다 — 알림 때문에 통과하던 쓰기가 막히거나 비정상
+#     종료하면 안 된다. 그래서 잠금·기록·JSON 생성이 실패하면 stdout 없이 돌아오고(실패를 드러내기 — core §4 — 위해
+#     stderr 한 줄만 남긴다. 통과 시 stderr 는 모델에게 안 보여 판정에 영향이 없다), 그 호출은 "한 번"을 소비하지 않는다.
+#   기억 = 상태 디렉토리의 사이드카 <sid>.worker-notice — 줄마다 이미 알린 TASK_PATH 값 하나(빈 줄 = "폴더 없음").
+#     세션 ID 가 이름에 있으니 다른 세션은 따로 센다. 상태파일(SCHEMA=4·set-state 키)은 건드리지 않는다.
+#     잠금 = <sidecar>.lock flock(-w 2 — 기존 사이드카 관례). 쓰기 = temp+mv(원자 — 부분 줄 잔재 없음).
+#   이 함수는 `|| true` 문맥에서 불린다(set -e 무시) — 그래서 단계마다 실패를 명시 검사한다.
+worker_notice() {
+  local agent_id debt task_path state_dir notice_sidecar notice_json directory_rc
+  [ "$EVENT" = "PreToolUse" ] || return 0
+  agent_id=$(echo "$HOOK_INPUT" | jq -r '.agent_id // empty' 2>/dev/null) || return 0   # 판별 불가 → 내지 않음(워커일 수 있다)
+  [ -z "$agent_id" ] || return 0
+  debt=$(state_get "$STATE" DEBT)
+  [ "$debt" != "1" ] || return 0                     # 긴급 수정(DEBT=1) — 메인이 직접 하는 것이 정식 경로
+  task_path=$(state_get "$STATE" TASK_PATH)          # 줄 없음·빈 값 = 같은 "폴더 없음"
+  state_dir=$(dirname -- "$STATE")
+  notice_sidecar="$state_dir/$SESSION_ID.worker-notice"
+  # JSON 을 잠금 전에 만든다 — 생성이 실패하면 기록도 하지 않아 "한 번"이 남는다.
+  notice_json=$(jq -cn --arg context "[gate-guard] 구현(중간↑ stakes)은 Opus 워커에게 맡긴다 — 메인은 브리핑·회수·판정. 낮은 stakes·긴급 수정은 메인이 직접 해도 된다(core §5). 이 알림은 작업 폴더마다 한 번만 뜬다." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$context}}' 2>/dev/null) && [ -n "$notice_json" ] || {
+    echo "[gate-guard] 경고: 구현 주체 알림 JSON 생성 실패 — 알림 생략(통과)." >&2; return 0; }
+  # 상태 디렉토리 보호(심링크·gitignore) 재확인 — rc 1·2 면 쓰지 않는다. rc 3(환경 실패)은 상태 writer 와 같이 진행.
+  directory_rc=0; state_ensure_dir "$state_dir" || directory_rc=$?
+  case "$directory_rc" in
+    0|3) ;;
+    *) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 상태 디렉토리 확보 실패 (원인: ${STATE_ENSURE_REASON:-unknown})." >&2
+       return 0 ;;
+  esac
+  # "이미 냈나 확인 → 기록"을 한 잠금 안에서(동시 호출 중 하나만 낸다). 서브셸 rc: 0 = 이번에 기록함(낼 차례) ·
+  #   10 = 이미 냈음 · 그 밖 = 실패. 기록이 성공한 **뒤에만** JSON 을 낸다 — 먼저 내고 기록이 실패하면 다음 호출이
+  #   또 내서 "한 번"이 깨지고, 기록 실패 시 알림을 빼면 최악이 "한 번 빠짐"이라 소음보다 낫다.
+  local record_rc=0
+  (
+    exec 9>>"$notice_sidecar.lock" 2>/dev/null || exit 1
+    flock -x -w 2 9 2>/dev/null || exit 1
+    if [ -e "$notice_sidecar" ] || [ -L "$notice_sidecar" ]; then
+      { [ -f "$notice_sidecar" ] && [ ! -L "$notice_sidecar" ]; } || exit 1   # 심링크·비정규 — 그 너머로 읽거나 쓰지 않는다
+      grep -qxF -- "$task_path" "$notice_sidecar" 2>/dev/null; seen_rc=$?
+      [ "$seen_rc" = 0 ] && exit 10
+      [ "$seen_rc" = 1 ] || exit 1                    # rc 2 = 읽기 실패("없음"으로 보지 않는다)
+    fi
+    temporary_file=$(mktemp "$state_dir/.worker-notice.XXXXXX" 2>/dev/null) || exit 1
+    if [ -e "$notice_sidecar" ]; then
+      cat -- "$notice_sidecar" > "$temporary_file" 2>/dev/null || { rm -f -- "$temporary_file"; exit 1; }
+    fi
+    printf '%s\n' "$task_path" >> "$temporary_file" 2>/dev/null || { rm -f -- "$temporary_file"; exit 1; }
+    mv -fT -- "$temporary_file" "$notice_sidecar" 2>/dev/null || { rm -f -- "$temporary_file"; exit 1; }
+  ) 2>/dev/null || record_rc=$?
+  case "$record_rc" in
+    0) printf '%s\n' "$notice_json" ;;
+    10) ;;
+    *) echo "[gate-guard] 경고: 구현 주체 알림 기록 실패($notice_sidecar — 잠금·쓰기) — 알림 생략(통과)." >&2 ;;
+  esac
+  return 0
+}
+
 # 1) 명세 미합의(SPEC≠1) → L1 차단. 인터뷰→명세서 합의가 유일한 진입 게이트(core v4 §1).
 if [ "$SPEC" != "1" ]; then
   if [ "$EVENT" = "PreToolUse" ]; then
@@ -412,6 +476,7 @@ fi
 # 3) auto → 구현 게이트 없음 (명세 합의 후 자율 실행 — 검증·리뷰는 stakes 비례)
 if [ "$MODE" = "auto" ]; then
   reread_gate
+  worker_notice || true   # 차단 판정이 모두 끝난 뒤(통과 확정)에만 — 알림은 판정을 바꾸지 않는다
   exit 0
 fi
 
