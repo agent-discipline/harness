@@ -393,6 +393,9 @@ set_pending() {
 #   기억 = 상태 디렉토리의 사이드카 <sid>.worker-notice — 줄마다 이미 알린 TASK_PATH 값 하나(빈 줄 = "폴더 없음").
 #     세션 ID 가 이름에 있으니 다른 세션은 따로 센다. 상태파일(SCHEMA=4·set-state 키)은 건드리지 않는다.
 #     잠금 = <sidecar>.lock flock(-w 2 — 기존 사이드카 관례). 쓰기 = temp+mv(원자 — 부분 줄 잔재 없음).
+#     잠금 파일은 **없을 때만 배타 생성**(noclobber `>` — 없는 경로엔 O_EXCL 이라 심링크를 따라 바깥에 만들지 않는다)하고
+#     **읽기 전용으로 연다**(`9<` — flock 은 읽기 전용 fd 에도 걸린다. `>>` 로 열면 검사와 열기 사이에 심링크로 바뀐
+#     자리의 바깥 파일을 만들거나 바꾼다). 연 뒤 그 자리가 심링크·비정규이거나 연 fd 와 다른 파일이면 실패로 친다.
 #   이 함수는 `|| true` 문맥에서 불린다(set -e 무시) — 그래서 단계마다 실패를 명시 검사한다.
 worker_notice() {
   local agent_id debt task_path state_dir notice_sidecar notice_json directory_rc
@@ -415,29 +418,46 @@ worker_notice() {
     *) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 상태 디렉토리 확보 실패 (원인: ${STATE_ENSURE_REASON:-unknown})." >&2
        return 0 ;;
   esac
-  # "이미 냈나 확인 → 기록"을 한 잠금 안에서(동시 호출 중 하나만 낸다). 서브셸 rc: 0 = 이번에 기록함(낼 차례) ·
-  #   10 = 이미 냈음 · 그 밖 = 실패. 기록이 성공한 **뒤에만** JSON 을 낸다 — 먼저 내고 기록이 실패하면 다음 호출이
-  #   또 내서 "한 번"이 깨지고, 기록 실패 시 알림을 빼면 최악이 "한 번 빠짐"이라 소음보다 낫다.
-  local record_rc=0
+  # "이미 냈나 확인 → 기록 → 출력"을 한 잠금 안에서(동시 호출 중 하나만 낸다). 서브셸 rc: 0 = 이번에 냄 ·
+  #   10 = 이미 냈음 · 20 = 출력 실패(기록 되돌림) · 21 = 출력 실패 + 되돌리기도 실패 · 그 밖 = 잠금·기록 실패.
+  #   기록이 성공한 **뒤에** JSON 을 낸다 — 먼저 내고 기록이 실패하면 다음 호출이 또 내서 "한 번"이 깨진다.
+  #   출력도 **잠금 안에서** 한다 — 출력이 실패하면(stdout 가득 참·닫힘) 같은 잠금 안에서 이 호출이 더한 마지막 줄만
+  #   되돌려 "한 번"을 소비하지 않는다(잠금 밖이면 그 사이 다른 호출이 "이미 냄"을 보고 조용해져 영영 안 뜬다).
+  #   되돌리기까지 실패하면 경고만 남기고 통과한다 — 그때 그 폴더의 "한 번"이 소비되는 것은 피할 수 없다.
+  #   서브셸 stderr 는 통째로 버린다(printf 자체의 "쓰기 오류" 줄 등) — 경고는 아래에서 rc 로 한 줄만 낸다.
+  local record_rc=0 notice_lock="$notice_sidecar.lock"
   (
-    exec 9>>"$notice_sidecar.lock" 2>/dev/null || exit 1
-    flock -x -w 2 9 2>/dev/null || exit 1
+    if [ ! -e "$notice_lock" ] && [ ! -L "$notice_lock" ]; then
+      ( set -C; : > "$notice_lock" ) 2>/dev/null || true   # 경합으로 다른 호출이 먼저 만들었으면 그것을 쓴다
+    fi
+    { [ -f "$notice_lock" ] && [ ! -L "$notice_lock" ]; } || exit 1   # 심링크·비정규 — 열지 않는다(FIFO 막힘도 피함)
+    exec 9<"$notice_lock" || exit 1
+    { [ -f "$notice_lock" ] && [ ! -L "$notice_lock" ]; } || exit 1   # 검사와 열기 사이에 바뀐 자리
+    if [ -e /proc/self/fd/9 ]; then [ "$notice_lock" -ef /proc/self/fd/9 ] || exit 1; fi   # 연 fd = 그 자리의 파일
+    flock -x -w 2 9 || exit 1
     if [ -e "$notice_sidecar" ] || [ -L "$notice_sidecar" ]; then
       { [ -f "$notice_sidecar" ] && [ ! -L "$notice_sidecar" ]; } || exit 1   # 심링크·비정규 — 그 너머로 읽거나 쓰지 않는다
-      grep -qxF -- "$task_path" "$notice_sidecar" 2>/dev/null; seen_rc=$?
+      grep -qxF -- "$task_path" "$notice_sidecar"; seen_rc=$?
       [ "$seen_rc" = 0 ] && exit 10
       [ "$seen_rc" = 1 ] || exit 1                    # rc 2 = 읽기 실패("없음"으로 보지 않는다)
     fi
-    temporary_file=$(mktemp "$state_dir/.worker-notice.XXXXXX" 2>/dev/null) || exit 1
+    temporary_file=$(mktemp "$state_dir/.worker-notice.XXXXXX") || exit 1
     if [ -e "$notice_sidecar" ]; then
-      cat -- "$notice_sidecar" > "$temporary_file" 2>/dev/null || { rm -f -- "$temporary_file"; exit 1; }
+      cat -- "$notice_sidecar" > "$temporary_file" || { rm -f -- "$temporary_file"; exit 1; }
     fi
-    printf '%s\n' "$task_path" >> "$temporary_file" 2>/dev/null || { rm -f -- "$temporary_file"; exit 1; }
-    mv -fT -- "$temporary_file" "$notice_sidecar" 2>/dev/null || { rm -f -- "$temporary_file"; exit 1; }
+    printf '%s\n' "$task_path" >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 1; }
+    mv -fT -- "$temporary_file" "$notice_sidecar" || { rm -f -- "$temporary_file"; exit 1; }
+    printf '%s\n' "$notice_json" && exit 0
+    # 출력 실패 — 방금 더한 마지막 줄만 지운다(다른 작업 폴더의 기록은 남긴다). 잠금을 쥔 채라 마지막 줄은 이 호출의 것이다.
+    rollback_file=$(mktemp "$state_dir/.worker-notice.XXXXXX") || exit 21
+    sed '$d' "$notice_sidecar" > "$rollback_file" && mv -fT -- "$rollback_file" "$notice_sidecar" \
+      || { rm -f -- "$rollback_file"; exit 21; }
+    exit 20
   ) 2>/dev/null || record_rc=$?
   case "$record_rc" in
-    0) printf '%s\n' "$notice_json" ;;
-    10) ;;
+    0|10) ;;
+    20) echo "[gate-guard] 경고: 구현 주체 알림 출력 실패(stdout) — 기록을 되돌리고 알림 생략(통과)." >&2 ;;
+    21) echo "[gate-guard] 경고: 구현 주체 알림 출력 실패(stdout)·기록 되돌리기도 실패($notice_sidecar) — 이 작업 폴더의 알림은 다시 뜨지 않습니다(통과)." >&2 ;;
     *) echo "[gate-guard] 경고: 구현 주체 알림 기록 실패($notice_sidecar — 잠금·쓰기) — 알림 생략(통과)." >&2 ;;
   esac
   return 0
