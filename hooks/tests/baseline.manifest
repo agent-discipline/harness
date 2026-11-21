@@ -1,10 +1,2 @@
 # phase-01 baseline — 현행 훅의 결함 재현(red) 케이스. 형식: <test-id> <assert-id>
 # 수정 페이즈 통과 시 이 파일에서 해당 행을 제거한다(전체 suite green 지향).
-# implementation-by-workers 리뷰 루프 2(T1·T2·T3·T5·T9) — worker-notice.sh 실패 정책 재설계(준비 → 출력 → 확정) 구현 전 blind 작성. 구현 후 green 이면 이 묶음을 지운다.
-test_wn_18 wn18-mktemp-fail-stage-준비
-test_wn_18b wn18b-confirm-fail-notice-already-out-notice
-test_wn_20 wn20-pipe-stage-출력
-test_wn_20b wn20b-sidecar-bytes-unchanged
-test_wn_21 wn21-sidecar-bytes-unchanged
-test_wn_21b wn21b-sidecar-bytes-unchanged
-test_wn_22 wn22-broken-pipe-stage-출력
