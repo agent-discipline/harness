@@ -674,25 +674,47 @@ test_wn_14() { # [명세 동시에 들어온 호출 중 하나만 낸다("이미
   assert_state SCHEMA 4 wn14-schema-intact
 }
 
-test_wn_14b() { # [명세 "이미 냈나 확인 → 기록"이 한 잠금 안 · T8] 장벽으로 경합을 성립시켜도 확인 지점 동시 체류는 1, 알림은 정확히 1개
+test_wn_14b() { # [명세 "이미 냈나 확인 → 기록"이 한 잠금 안 · T8·U1] 둘째 호출이 확인·잠금에 닿은 것을 **관측한 뒤** 첫 호출을 풀어도 알림은 1개
   # 왜 따로 있나: wn_14 만으로는 잠금을 빼도 통과한다(실측 40/40) — 호출 사이 간격이 "확인 → 기록" 창보다 길다.
-  # 방법(시간이 아니라 장벽 — 리뷰 루프 2 T8): PATH 앞의 mktemp 래퍼가 **상태 디렉토리 안** 임시 파일을 만들 때(= 이미 냈나 확인을
-  #   통과한 뒤의 준비 단계) 장벽에 도착 표식을 남기고, **다른 호출이 하나 더 도착할 때까지** 기다렸다가 함께 진행한다.
-  #   기다리는 동안 "지금 장벽에 머무는 호출 수"를 기록한다. 잠금이 없으면 둘째 호출도 "아직 안 냄"을 보고 장벽에 도착해
-  #   체류 수가 2 이상이 된다(경합이 성립했다는 직접 증거). 잠금이 있으면 첫 호출이 잠금을 쥔 채 장벽에 있어 다른 호출은 확인
-  #   지점에 닿지 못한다 — 체류 수는 언제나 1 이다. 그래서 장벽은 시간 제한(WN_BARRIER_TIMEOUT_MS) 뒤 혼자서도 풀린다.
-  # 시간 제한의 뜻: 판정은 시간에 기대지 않는다. 잠금이 있으면 장벽은 늘 시간 제한으로 풀리고(체류 1·알림 1 — 제한 길이와 무관,
-  #   기다리던 호출이 flock -w 2 를 넘기면 "잠금 실패 → 생략"이라 알림이 늘지 않는다). 잠금이 없으면 빨강이 되려면 둘째 호출이
-  #   첫 도착 뒤 제한(5초) 안에 확인 지점에 닿기만 하면 된다 — 동시에 띄운 8개의 도착 간격(수십~수백 ms)보다 넉넉하다.
-  # 구현 의존(이름 무관 원칙의 예외 — 이 사례만): "준비 단계가 상태 디렉토리의 mktemp" 라는 구현 방식(6b0a43c·명세 ①준비=임시 파일).
-  #   래퍼가 한 번도 걸리지 않으면 장벽이 무력하므로 도착 수 ≥ 1 을 먼저 단언한다(조용히 약해지지 않게).
+  # 장벽(리뷰 루프 2 T8 → 루프 3 U1 로 다시 설계): PATH 앞의 mktemp 래퍼가 **상태 디렉토리 안** 임시 파일을 만들 때(= 확인을
+  #   통과한 뒤의 준비 단계) 그 호출을 붙잡는다. 아래 둘 중 하나를 **관측해야만** 놓아준다.
+  #   ⓐ 다른 호출이 알림 잠금을 잡으려 했다 — PATH 앞의 flock 래퍼가 상태 lock 이 아닌 상태 디렉토리 안 잠금을 잡으려는 호출마다
+  #      시도 표식을 남긴다(진짜 flock 으로 넘기기 **전에**). 시도 표식이 2개 이상(붙잡힌 호출 자신 + 다른 호출)이면 성립.
+  #   ⓑ 다른 호출도 준비 단계(mktemp)에 도착했다 — 잠금 자체가 없는 구현에서는 ⓐ 가 영영 오지 않으므로 이것이 관측점이다.
+  #   어느 쪽도 관측하지 못한 채 제한 시간(WN_BARRIER_TIMEOUT_MS)이 지나면 "경합 미성립" 표식을 남기고 놓아준다 — 그 표식이 있으면
+  #   사례는 **실패**다(시간 제한은 이 판정에만 쓴다. 제한 안에 관측되면 바로 놓아주므로 판정이 제한 길이에 기대지 않는다).
+  # 각 구현에서 일어나는 일:
+  #   · 정상(확인이 잠금 안): 붙잡힌 호출이 잠금을 쥐고 있는 동안 다른 호출이 flock 을 시도 → ⓐ 성립 → 놓아줌 → 출력·확정 후 잠금을
+  #     풀면 기다리던 호출이 잠금을 얻고 확인에서 "이미 냄"을 본다. 알림 1·체류 1.
+  #   · 확인이 잠금 밖: 다른 호출이 확인(아직 기록 없음)을 끝내고 flock 을 시도 → ⓐ 성립 → 첫 호출이 놓여 출력·확정·해제 → 기다리던
+  #     호출이 잠금을 얻지만 확인은 이미 지나갔다 → 또 낸다. 알림 ≥2 → 빨강. (옛 장벽은 혼자 5초를 기다리는 동안 기다리던 호출이
+  #     flock -w 2 를 넘겨 빠져 초록이 됐다 — 루프 3 리뷰어 실험. 이제는 관측 즉시 놓아주므로 그 대기가 2초에 닿지 않는다.)
+  #   · 잠금 없음: 다른 호출도 확인을 지나 mktemp 에 도착 → ⓑ 성립 → 체류 2 → 빨강.
+  # 구현 의존(이름 무관 원칙의 예외 — 이 사례만): 준비 단계 = 상태 디렉토리의 mktemp(명세 ①준비=임시 파일) · 알림 잠금 = 상태 디렉토리
+  #   안 파일을 flock(1)(6b0a43c 이후). 래퍼가 걸리지 않으면 도착 수 ≥ 1 단언과 "경합 미성립" 판정이 빨강으로 알린다.
   local folder; folder=$(wn_task_dir concurrent-barrier)
   wn_state auto 0 0 1 "$folder"
   wn_gitignore
   local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
-  local fake="$SANDBOX/barrier-mktemp"; mkdir -p "$fake"
-  local real_mktemp; real_mktemp=$(command -v mktemp) || fail wn14b-mktemp-missing
+  local fake="$SANDBOX/barrier-bin"; mkdir -p "$fake"
+  local real_mktemp real_flock
+  real_mktemp=$(command -v mktemp) || fail wn14b-mktemp-missing
+  real_flock=$(command -v flock) || fail wn14b-flock-missing
   local barrier="$SANDBOX/barrier"; mkdir -p "$barrier"
+  local state_lock; state_lock=$(realpath -m -- "$STATE.lock")
+  cat > "$fake/flock" <<'WRAP'
+#!/bin/bash
+target=""
+for argument in "$@"; do
+  if [[ "$argument" =~ ^[0-9]+$ ]] && [ -e "/proc/$$/fd/$argument" ]; then target=$(readlink "/proc/$$/fd/$argument")
+  elif [ -e "$argument" ]; then target=$(realpath -- "$argument"); fi
+done
+case "$target" in
+  "$WN_STATE_LOCK") ;;
+  "$WN_STATE_DIR"/*) : > "$WN_BARRIER/lock-attempt.$$" ;;
+esac
+exec "$WN_REAL_FLOCK" "$@"
+WRAP
   cat > "$fake/mktemp" <<'WRAP'
 #!/bin/bash
 in_state_dir=0
@@ -705,24 +727,26 @@ if [ "$in_state_dir" = 1 ]; then
   while :; do
     arrived=$(find "$WN_BARRIER" -maxdepth 1 -name 'arrive.*' | wc -l)
     departed=$(find "$WN_BARRIER" -maxdepth 1 -name 'depart.*' | wc -l)
+    lock_attempts=$(find "$WN_BARRIER" -maxdepth 1 -name 'lock-attempt.*' | wc -l)
     echo $(( arrived - departed )) >> "$WN_BARRIER/staying.$$"
-    [ "$arrived" -ge 2 ] && break
-    [ "$(( $(date +%s%N) / 1000000 ))" -ge "$deadline" ] && break
-    sleep 0.02
+    if [ "$lock_attempts" -ge 2 ]; then echo lock-attempt > "$WN_BARRIER/released-by.$$"; break; fi
+    if [ "$arrived" -ge 2 ]; then echo arrival > "$WN_BARRIER/released-by.$$"; break; fi
+    if [ "$(( $(date +%s%N) / 1000000 ))" -ge "$deadline" ]; then : > "$WN_BARRIER/not-observed.$$"; break; fi
+    sleep 0.01
   done
   : > "$WN_BARRIER/depart.$$"
 fi
 exec "$WN_REAL_MKTEMP" "$@"
 WRAP
-  chmod +x "$fake/mktemp"
+  chmod +x "$fake/flock" "$fake/mktemp"
   local race="$SANDBOX/race-barrier"; mkdir -p "$race"
   local pids="" index process
   for index in 1 2 3 4 5 6 7 8; do
     (
       set +e
       printf '%s' "$json" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
-        XDG_CONFIG_HOME="$XDG_DIR" PATH="$fake:$PATH" WN_REAL_MKTEMP="$real_mktemp" WN_BARRIER="$barrier" \
-        WN_BARRIER_TIMEOUT_MS=5000 WN_STATE_DIR="$STATE_DIR" \
+        XDG_CONFIG_HOME="$XDG_DIR" PATH="$fake:$PATH" WN_REAL_MKTEMP="$real_mktemp" WN_REAL_FLOCK="$real_flock" \
+        WN_BARRIER="$barrier" WN_BARRIER_TIMEOUT_MS=10000 WN_STATE_DIR="$STATE_DIR" WN_STATE_LOCK="$state_lock" \
         bash "$HOOKS_DIR/gate-guard.sh" > "$race/out.$index" 2> "$race/err.$index"
       echo $? > "$race/exit.$index"
     ) &
@@ -730,7 +754,11 @@ WRAP
   done
   for process in $pids; do wait "$process" || true; done
   local arrivals; arrivals=$(find "$barrier" -maxdepth 1 -name 'arrive.*' | wc -l)
-  [ "$arrivals" -ge 1 ] || fail wn14b-barrier-reached          # 재현 성립: 준비 단계(mktemp)가 장벽에 걸렸다
+  [ "$arrivals" -ge 1 ] || fail wn14b-barrier-reached                       # 재현 성립: 준비 단계(mktemp)가 장벽에 걸렸다
+  # 경합 성립: 모든 붙잡힘이 관측(ⓐ 또는 ⓑ)으로 풀렸다. 하나라도 제한 시간으로 풀렸으면 이 실행은 경합을 증명하지 못했다 = 실패.
+  if [ -n "$(find "$barrier" -maxdepth 1 -name 'not-observed.*' | head -1)" ]; then
+    echo "  [dbg] 도착=$arrivals 잠금시도=$(find "$barrier" -maxdepth 1 -name 'lock-attempt.*' | wc -l)"; fail wn14b-race-observed
+  fi
   local most_staying; most_staying=$(cat "$barrier"/staying.* 2>/dev/null | sort -n | tail -1)
   [ "$most_staying" = "1" ] || { echo "  [dbg] 장벽 동시 체류 최대=$most_staying 도착=$arrivals"; fail wn14b-one-at-check-point; }
   local notices=0 output
@@ -742,7 +770,7 @@ WRAP
       notices=$((notices + 1))
     fi
   done
-  [ "$notices" = "1" ] || { echo "  [dbg] notices=$notices 도착=$arrivals"; fail wn14b-exactly-one-notice; }
+  [ "$notices" = "1" ] || { echo "  [dbg] notices=$notices 도착=$arrivals 풀린 까닭=$(cat "$barrier"/released-by.* 2>/dev/null | sort | uniq -c | tr '\n' ' ')"; fail wn14b-exactly-one-notice; }
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn14b-after-race-quiet
 }
 
@@ -1122,6 +1150,8 @@ test_wn_21() { # [T2 · 명세 준비 단계가 줄 경계를 보존] 끝 개행
   wn_state auto 0 0 1 "$folder_b"
   wn_run_unwritable_stdout closed "$(wn_json PreToolUse Write "$REPO/src/a.c")"
   assert_exit 0 wn21-output-fail-exit
+  wn_assert_one_warning wn21-output-fail
+  wn_assert_stage wn21-output-fail 출력
   cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" \
     || { echo "  [dbg] after=$(od -c "$(wn_notice_sidecar_path)" | head -3 | tr '\n' ' ')"; fail wn21-sidecar-bytes-unchanged; }
   wn_state auto 0 0 1 "$folder_a"
@@ -1143,6 +1173,8 @@ test_wn_21b() { # [T2 · 빈 TASK_PATH 변형] 끝 개행 없는 `A` 에서 "폴
   wn_state auto 0 0 1 -
   wn_run_unwritable_stdout closed "$(wn_json PreToolUse Write "$REPO/src/a.c")"
   assert_exit 0 wn21b-output-fail-exit
+  wn_assert_one_warning wn21b-output-fail
+  wn_assert_stage wn21b-output-fail 출력
   cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" \
     || { echo "  [dbg] after=$(od -c "$(wn_notice_sidecar_path)" | head -3 | tr '\n' ' ')"; fail wn21b-sidecar-bytes-unchanged; }
   wn_state auto 0 0 1 "$folder_a"
@@ -1168,4 +1200,39 @@ test_wn_22() { # [T3 · 명세 출력 대상이 닫혀 있어도(SIGPIPE) 훅은
   [ ! -e "$(wn_notice_sidecar_path)" ] || [ "$(grep -cxF -- "$folder" "$(wn_notice_sidecar_path)")" = "0" ] || fail wn22-not-recorded
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn22-not-consumed
   wn_assert_no_warning wn22-normal-after
+}
+
+# ══ 23·24 리뷰 루프 3 ═══════════════════════════════════════════════════════
+
+test_wn_23() { # [U2 · 명세 출력 대상이 닫혀 있어도 훅은 죽지 않고 통과] stdout·stderr **둘 다** 읽는 쪽이 닫힌 파이프 → exit 0(141 아님) · 소비 안 함
+  # 경고 줄은 읽는 쪽이 없어 볼 수 없다 — 이 사례는 종료 코드와 소비만 본다. 정상 실패 경로의 경고 한 줄 유지는 wn_17b·20·22 가 본다
+  #   (경고를 통째로 버리는 식으로 고치면 그쪽이 빨강).
+  local folder; folder=$(wn_task_dir both-pipes-broken)
+  wn_state auto 0 0 1 "$folder"; wn_gitignore
+  wn_assert_unwritable_reproduces pipe wn23-precondition-sigpipe
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  local stderr_fifo="$SANDBOX/broken-stderr.fifo"
+  rm -f "$stderr_fifo"; mkfifo "$stderr_fifo" || fail wn23-mkfifo
+  wn_open_broken_pipe                                                          # fd 8 = stdout 용
+  exec 5<>"$stderr_fifo"; exec 6>"$stderr_fifo"; exec 5<&-                     # fd 6 = stderr 용(읽는 쪽 없음)
+  set +e
+  printf '%s' "$json" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+    XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/gate-guard.sh" >&8 2>&6
+  HOOK_EXIT=$?
+  set -e
+  exec 6>&- 2>/dev/null || true; wn_close_broken_pipe
+  HOOK_STDERR=""
+  assert_exit 0 wn23-both-broken-exit
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn23-not-consumed
+}
+
+test_wn_24() { # [U3 · 명세 보장 범위: 파이프로의 출력은 전부 아니면 전무] 알림 stdout 한 덩어리가 PIPE_BUF(4096) 보다 짧다
+  # 왜: 파이프에 PIPE_BUF 이하를 한 번의 write(2) 로 쓰면 원자적이다(POSIX) — 일부만 나간 잘린 JSON 이 남지 않는다.
+  #   알림이 PIPE_BUF 를 넘게 길어지면 이 보장이 사라지므로 길이를 고정한다. 한 번의 write 인지는 strace 실측(보고)으로 확인했고,
+  #   파일로 돌린 stdout 의 부분 쓰기는 시험 대상에서 뺀다(명세에 범위 밖으로 적는다).
+  local folder; folder=$(wn_task_dir pipe-buf)
+  wn_state auto 0 0 1 "$folder"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn24-notice
+  local bytes; bytes=$(wc -c < "$WN_LAST_STDOUT_FILE")
+  [ "$bytes" -lt 4096 ] || { echo "  [dbg] 알림 stdout 바이트=$bytes"; fail wn24-shorter-than-pipe-buf; }
 }

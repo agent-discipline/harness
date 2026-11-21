@@ -1,2 +1,4 @@
 # phase-01 baseline — 현행 훅의 결함 재현(red) 케이스. 형식: <test-id> <assert-id>
 # 수정 페이즈 통과 시 이 파일에서 해당 행을 제거한다(전체 suite green 지향).
+# implementation-by-workers 리뷰 루프 3 U2 — worker-notice.sh wn_23(stdout·stderr 둘 다 끊긴 파이프 → exit 0) 구현 전 작성. 구현 후 green 이면 이 묶음을 지운다.
+test_wn_23 wn23-both-broken-exit

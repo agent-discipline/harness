@@ -1,4 +1,4 @@
-a482b885eb9f790650845f61a2873cecbd7da0e1415c68841f39f99c0bc022e1  baseline.manifest
+83ef5053f394207883feb2dfc96741b354f0ab04ea4e21397e27d091c0dbccb2  baseline.manifest
 f211184fe40bf182b2453af9fc525cf43388617c551186c7e0bb75509f49e112  cases/codex-scan.sh
 ae85ca635e1d2b20c36018a22c7edcbabcf30c5ebf4801fabc6adf5ba4b98225  cases/cwd-resolution.sh
 eae4c2439dfc91a5e72a7bf565e6b08de72f34d0b00ab6421679d187c4bff05e  cases/decision-reread.sh
@@ -8,7 +8,7 @@ b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guar
 e2f784d96758c2257ef81e4d524d9e0412808385e99305095a269e9d9dcc0585  cases/misc-guards.sh
 4a8d45155c4c337e8dca574a8e6b3230188b627fc9664c04e34956624f1c1b1e  cases/sidecar-docsroot.sh
 90897bfb9e7914f528fb039a2d6a31d2263a7e03faa0498dd8fbb25bbd4c52a3  cases/state-schema.sh
-9163304e70ae716a67ff10738d926fd9077c802263c3cc821b35e1b3958b1b07  cases/worker-notice.sh
+743be2a1d315b3d1d75ca0c75d1ccbbb8e4e34cefcd5816c6929794375628444  cases/worker-notice.sh
 0e455c60201dc0d2d6eef74dd569298a2b7ac92a33b8094850b616382bee2f3b  fixtures/legacy-2f07fb0/gate-guard.sh
 8e4a126b122c216e10d1a6c3f983e2e7554fadeff4cf674f6a31956f8eaa6478  fixtures/legacy-2f07fb0/state-lib.sh
 871fa929280f913be86d4e167604b7cee135b512dbe6440c9ac9248f1c252e45  fixtures/legacy/reinject-mode.sh
@@ -442,3 +442,5 @@ d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legac
 # test: test_wn_21
 # test: test_wn_21b
 # test: test_wn_22
+# test: test_wn_23
+# test: test_wn_24
