@@ -4,7 +4,7 @@
 
 ## 기준
 
-- 마지막 갱신: 2026-11-22 · 직전 완료 작업: `docs/plans/2026-11-21/implementation-by-workers/`(v4.8 — 구현은 Opus 워커, gate-guard 알림) · 병합 상태: 브랜치 `feat/implementation-by-workers`(main 병합 포함, push·PR·병합·배포는 사용자 확인 뒤). 그 앞 `review-reproduction-impact`는 PR #9 `main` 병합(`e267751`) · `deploy.sh` 배포 · smoke 통과(2026-11-22), `decisions-service-communication`은 PR #8 병합(`2f07fb0`)
+- 마지막 갱신: 2026-11-22 · 직전 완료 작업: `docs/plans/2026-11-21/implementation-by-workers/`(v4.8 — 구현은 Opus 워커, gate-guard 알림) · 병합 상태: PR #11 `main` 병합(`c77a3e3`) · `deploy.sh` 배포 · smoke 통과 · 새 세션에서 알림 확인(2026-11-22). 그 앞 `review-reproduction-impact`는 PR #9 `main` 병합(`e267751`) · `deploy.sh` 배포 · smoke 통과(2026-11-22), `decisions-service-communication`은 PR #8 병합(`2f07fb0`)
 
 ## 다음 작업 후보 (우선순위순)
 
@@ -115,6 +115,7 @@
 - **모델에게 안 보이는 출력(실증 11-21)**: 통과(exit 0)하면서 낸 일반 stdout·stderr 는 모델에게 안 보인다 — 기존 lazy Bash 소프트 리마인더(일반 stdout)가 같은 이유로 안 보일 가능성. `additionalContext` 로 바꿀지.
 - **테스트 러너**: baseline 에서 예상 실패 사례가 건너뛰면 MISMATCH 문구가 "unexpected-pass"(K6) · `decision-reread.sh` 9곳·`detect-layer.sh` 2곳의 root `return 0` 이 아직 통과로 집계(`skip_test` 로 바꿀 것) · 테스트 실행 중 다른 세션이 `deploy.sh` 를 돌리면 무결성 위반으로 실패한다(11-22 03:40 실측 — 원인이 테스트가 아님을 알리는 문구 또는 재시도 안내).
 - **capture-decision**: 작업 폴더가 바뀔 때 세션의 이전 작업 질문·답까지 새 폴더 `decisions.md` 에 옮겨 적는다(11-21 관찰, 원인 미확인 — 다른 저장소의 결정이 섞임).
+- **저장소 밖 임시 worktree 의 쓰기가 L1 인가**: 리뷰 재현(`review-reproduction.md` §2)은 "검증"으로 정리했지만 core §1("실행·적용되는 것 전부")과 C1("repo 밖 = L0 통과")이 다르게 읽힌다(11-22 정합 검토).
 - **문서**: `HISTORY.md`·README 이력에 v4.4~v4.7 행이 비어 있는지 대조 · `review.md`(116줄+)·`open-source.md`(173줄)가 §8 "각 ≤80줄"을 넘음(N4 와 묶음).
 
 ## 보류·이월
@@ -127,7 +128,7 @@
 
 ## 완료 이력
 
-- 완료(병합 대기) → `docs/plans/2026-11-21/implementation-by-workers/`(v4.8)
+- 완료 → `docs/plans/2026-11-21/implementation-by-workers/`(v4.8)
 - 완료 → `docs/plans/2026-11-14/lazymode-self-contained-gate/` (lazy 게이트 질문 자기완결을 매 턴 재주입 + 사전 점검 정식화)
 - 완료 → `docs/plans/2026-11-06/harness-v4-3/`(v4.3 일괄)
 - 완료 → `docs/plans/2026-11-02/agent-search-findings/`(v4.3)
