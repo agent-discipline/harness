@@ -121,7 +121,7 @@
 
 | 문서 | 트리거 |
 |------|--------|
-| `playbooks/review.md` | 中↑ 리뷰 시점 (codex 호출·보안 스캔·PATH·렌즈·ledger 정본) · 지적을 종합하고 고칠 때는 `playbooks/review-triage.md`(기각 / 지금 고친다 / 후보 — 맞는 지적도 후보면 이 작업에서 고치지 않는다) |
+| `playbooks/review.md` | 中↑ 리뷰 시점 (codex 호출·보안 스캔·PATH·렌즈·ledger 정본) · 지적을 종합하고 고칠 때는 `playbooks/review-triage.md`(기각 / 지금 고친다 / 후보 — 맞는 지적도 후보면 이 작업에서 고치지 않는다) · 코드 동작 지적을 채택하기 전과 남기는 결함을 보고할 때는 `playbooks/review-reproduction.md`(수정 전 코드에서 실행 재현 · 영향 등급 · 보고 규칙) |
 | `playbooks/refactoring.md` | 리팩토링 작업 착수 시 (고정 순서 자기완결) |
 | `playbooks/implementation-lazymode.md` | 모드 lazy |
 | `playbooks/open-source.md` | 외부 OSS 기여·PR |
