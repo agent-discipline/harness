@@ -79,6 +79,10 @@ write_pending() { # <turn> <op> <cmd> — op별 파일 (phase-02 loop2: 복합 �
   printf 'turn=%s\ncmd=%s\n' "$1" "$3" > "$STATE_DIR/$SID.pending-$2"
 }
 
+# 건너뜀 — 환경 때문에 그 사례를 시험할 수 없을 때(예: root 의 권한 실패 주입). 통과로 세지 않는다:
+#   러너가 SKIP_TEST 표식을 보고 따로 세어 요약에 낸다(2026-11-22 리뷰 루프 2 T6 — 건너뜀 ≠ 통과).
+skip_test() { echo "SKIP_TEST ${CURRENT_TEST:-unknown} $1"; exit 0; }   # <사유 — 공백 없는 낱말>
+
 # assert — 실패 시 FAIL_ASSERT <test> <assert-id> 출력 후 종료
 fail() { echo "FAIL_ASSERT ${CURRENT_TEST:-unknown} $1"; exit 1; }
 assert_exit() { # <want> <assert-id>
