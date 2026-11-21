@@ -22,11 +22,11 @@
 
 > 스키마 정본 = `playbooks/review.md §2`. 필드 삭제 금지 — 파일만 통합된 것.
 
-- review packet: base SHA / `$OUT` / mirror 경로 (루프마다 1행 — 임시 경로라 여기가 유일한 기록)
+- review packet: base SHA / 리뷰한 SHA / `$OUT` / mirror 경로 (루프마다 1행 — 임시 경로라 여기가 유일한 기록)
 
-| id | task | first_seen_loop | source | 근거(file:line) | disposition | status | fixed_in_loop |
-|----|------|-----------------|--------|-----------------|-------------|--------|---------------|
-| | | | | | | | |
+| id | task | first_seen_loop | source | 근거(file:line) | repro | impact | disposition | status | fixed_in_loop |
+|----|------|-----------------|--------|-----------------|-------|--------|-------------|--------|---------------|
+| | | | | | | | | | |
 
 - verified(대칭 부담 — 신규 채택 0인 루프만): `lens / 근거 / how / source`
 
