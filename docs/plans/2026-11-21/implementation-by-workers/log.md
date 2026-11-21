@@ -50,6 +50,9 @@
 | 11-22 04:2x | 사용자: "진행하자 … 별도 하네스 수정(리뷰 쪽)과 충돌 없이 깔끔하게 되는지도 확인하고 합쳐서 진행하고 스터디 노트도 아카이브 진행하자" | push · PR · 병합 · `deploy.sh` · study-note 아카이브 승인. main 이 다시 앞서감(PR #10 — 문서 2파일) → 병합: `docs/plans/NEXT.md` 머리 줄 충돌 1(양쪽의 "마지막 갱신" — 두 사실을 합쳐 해결) |
 | 11-22 04:3x | 두 변경의 정합 검토(codex — 합쳐진 core.md · review 3문서 · 템플릿 2 전문) | **실제 충돌 1**: `review-reproduction.md` §1·§2 가 메인이 재현 테스트를 쓰고 작업 트리로 옮긴다고 적음 ↔ core §5 구현 주체. 읽기에 따라 1(저장소 밖 worktree 의 테스트가 L1 인가). 충돌 아님 2("메인은 리뷰어가 아니다" ↔ main-synthesis · "지금 고친다 = 채택" 용어 대응). → 명세 ② 에 정합 조항 추가(재현은 메인도 가능, 작업 트리로 옮기는 것은 구현 워커), 문서 워커에게 위임 |
 | 11-22 04:4x | 문서 워커 후속 4 회수(누적 185k 토큰) — 리뷰 재현 규칙과의 정합 | core §5 구현 주체 줄의 "메인이 직접 해도 되는 것"에 "리뷰 지적의 재현(저장소 밖 임시 worktree — `review-reproduction.md` §2. 채택한 재현 테스트를 작업 트리로 옮기는 것은 구현 워커)" · 변경 이력 v4.8 · `review-reproduction.md` §2 한 구절("core §5 구현 주체(중간↑ = 구현 워커)가 작업 트리로 옮겨") · HISTORY. core 147줄 15404자(+120). 재현 절차·`review.md`·`review-triage.md` 무변경. 남은 것: 저장소 밖 임시 worktree 의 쓰기가 L1 인지는 core §1·C1 의 읽기에 달림(범위 밖 — NEXT). 메인 재실행: `bash hooks/tests/run.sh` **428 passed, 0 failed, 0 skipped**. 커밋 |
+| 11-22 04:5x | 발행(사용자 승인 "진행하자") — 브랜치 push → PR #11 → 병합(`c77a3e3`) → `bash hooks/deploy.sh` | dry-run 의 차이는 이번 변경뿐(DEST 에만 있는 파일 없음). 배포 exit 0 — smoke 통과, diff 0 검증, 백업 `~/.claude/.deploy-backup-850089`. 배포본에 `worker_notice`·"구현 주체" 문장 확인 |
+| 11-22 05:0x | **새 세션 확인**(임시 저장소에서 `claude -p` — log.md 생성 → set-state → 워커의 Write → 메인의 Write 2회) | 워커의 `worker.sh` 쓰기: 알림 없음(워커의 자기 보고) · 메인의 첫 쓰기 `main1.sh`: `PreToolUse:Write` additional context 로 알림 문구 그대로 도착 · 메인의 둘째 쓰기 `main2.sh`: 없음. 상태 디렉토리에 `<세션>.worker-notice`·`.lock` 생성. 명세 ⑤ 훅(실제)·배포 뒤 항목 충족 |
+| 11-22 05:0x | CS 이슈 아카이브(사용자 승인) — Opus 워커(226k 토큰, 39 tool, 9분)가 작성, 메인이 범위·노출 확인 뒤 커밋·push | 아카이브: `issue/shell/closed-pipe-sigpipe` ⓐ 새 카드 `4d0d5cae` · `issue/cross-cutting/reliability/idempotent-retry-design` ⓒ 방안 비교 덧붙임 `23bc6933` · `issue/cross-cutting/testing/green-masking` ⓒ 방안 비교 덧붙임 2 `894ab215`. 카드에서 지운 원 식별자: gate-guard · 하네스 · worker · wn_ · TASK_PATH · additionalContext · 사이드카 · 모델·도구 이름 · 절대 경로(워커 스캔 0건, 메인이 새 카드 폴더를 다시 grep 해 0건). study-note 색인 186 → 187 |
 
 ## 리뷰 ledger
 
@@ -100,7 +103,7 @@
 
 ## 생략한 검증
 
-- 없음(11-22 기준 — 배포 뒤 확인 2건은 "남은 것"에: `deploy.sh` smoke · 새 세션에서 알림이 메인에게만 보이는지).
+- 없음(배포 뒤 확인 2건 — `deploy.sh` smoke · 새 세션에서 알림이 메인에게만 보이는지 — 도 11-22 에 끝남, 위 행).
 
 ## 완료 요약 (2026-11-22)
 
