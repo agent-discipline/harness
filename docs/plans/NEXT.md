@@ -4,7 +4,7 @@
 
 ## 기준
 
-- 마지막 갱신: 2026-11-20 · 직전 완료 작업: `docs/plans/2026-11-20/decisions-service-communication/` · 병합 상태: 브랜치 `feat/decisions-service-communication`(PR 생성, 병합은 사용자 확인 뒤). 그 앞 `task-units`는 `main` 병합(`5a5eaf0`)
+- 마지막 갱신: 2026-11-22 · 직전 완료 작업: `docs/plans/2026-11-21/implementation-by-workers/`(v4.8 — 구현은 Opus 워커, gate-guard 알림) · 병합 상태: 브랜치 `feat/implementation-by-workers`(main e267751 병합 포함, push·PR·병합·배포는 사용자 확인 뒤). 그 앞 `review-reproduction-impact` 는 `main` 병합·배포(11-22 03:40).
 
 ## 다음 작업 후보 (우선순위순)
 
@@ -108,6 +108,15 @@
 - **다음 — 분기표**: 외부 시스템 연계 · 백엔드 구조 · 프런트엔드 구조(근거 자료: `project/resume`의 지킴이 프런트 결정) · 프런트 서버의 라우팅. 주제 하나가 작업 하나.
 - **통신 분기표에 아직 줄이 없는 것**: 사가의 세부와 "너무 길어진다"의 기준, 타임아웃과 재시도, 여러 인스턴스의 부하 분산, 스키마 호환, 네트워크 지연이 있을 때, 브라우저로 밀어 주는 방식. 만나면 `ROUTING.md`의 절차로 줄을 더한다.
 
+### N13. 구현 위임(v4.8) 후속 — 우선순위: 중간 · 관측 신호: implementation-by-workers 리뷰 후보 K1~K7 과 작업 중 관찰
+
+- **첫 실사용 관찰이 먼저**: 다음 中↑ 작업에서 알림이 실제로 한 번만 뜨는지 · 낮은 stakes 작업에서 소음인지 · 워커 토큰과 리뷰 지적 수(측정 로그 13열)를 적는다. 표본 2건으로 정한 규칙이다(README 실측 절의 한계).
+- **훅(gate-guard)**: `/clear` 뒤 같은 세션 ID 면 알림이 다시 안 뜸(K1 — session-mode-guard 소관) · 이월된 DEBT=1 동안 알림 없음(K2) · 다른 훅들의 잠금 파일도 `>>` 로 연다(K3 — 심링크) · `/proc` 없는 환경의 fd 동일성 검사(K5) · 강제 종료 시 `.worker-notice.XXXXXX` 잔재(K7) · `worker_notice` 밖의 경고·차단 메시지는 stderr 가 끊기면 SIGPIPE 로 죽을 수 있음.
+- **모델에게 안 보이는 출력(실증 11-21)**: 통과(exit 0)하면서 낸 일반 stdout·stderr 는 모델에게 안 보인다 — 기존 lazy Bash 소프트 리마인더(일반 stdout)가 같은 이유로 안 보일 가능성. `additionalContext` 로 바꿀지.
+- **테스트 러너**: baseline 에서 예상 실패 사례가 건너뛰면 MISMATCH 문구가 "unexpected-pass"(K6) · `decision-reread.sh` 9곳·`detect-layer.sh` 2곳의 root `return 0` 이 아직 통과로 집계(`skip_test` 로 바꿀 것) · 테스트 실행 중 다른 세션이 `deploy.sh` 를 돌리면 무결성 위반으로 실패한다(11-22 03:40 실측 — 원인이 테스트가 아님을 알리는 문구 또는 재시도 안내).
+- **capture-decision**: 작업 폴더가 바뀔 때 세션의 이전 작업 질문·답까지 새 폴더 `decisions.md` 에 옮겨 적는다(11-21 관찰, 원인 미확인 — 다른 저장소의 결정이 섞임).
+- **문서**: `HISTORY.md`·README 이력에 v4.4~v4.7 행이 비어 있는지 대조 · `review.md`(116줄+)·`open-source.md`(173줄)가 §8 "각 ≤80줄"을 넘음(N4 와 묶음).
+
 ## 보류·이월
 
 - v4.6 남은 기록 알림 — 실제 새 세션에서 미관측(테스트와 배포 smoke로만 확인). 재개 조건: 커밋되지 않은 작업 기록이 있는 상태에서 새 세션을 여는 첫 때 관측해 `docs/plans/2026-11-20/reread-full-read-and-session-leftover/log.md`에 덧붙임.
@@ -118,6 +127,7 @@
 
 ## 완료 이력
 
+- 완료(병합 대기) → `docs/plans/2026-11-21/implementation-by-workers/`(v4.8)
 - 완료 → `docs/plans/2026-11-14/lazymode-self-contained-gate/` (lazy 게이트 질문 자기완결을 매 턴 재주입 + 사전 점검 정식화)
 - 완료 → `docs/plans/2026-11-06/harness-v4-3/`(v4.3 일괄)
 - 완료 → `docs/plans/2026-11-02/agent-search-findings/`(v4.3)
