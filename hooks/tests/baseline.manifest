@@ -1,2 +1,7 @@
 # phase-01 baseline — 현행 훅의 결함 재현(red) 케이스. 형식: <test-id> <assert-id>
 # 수정 페이즈 통과 시 이 파일에서 해당 행을 제거한다(전체 suite green 지향).
+# implementation-by-workers 리뷰 루프 1 S1·S2 — worker-notice.sh wn_16·16b(잠금 자리 심링크)·wn_17·17b(stdout 쓰기 실패) 구현 전 blind 작성. 구현 후 green 이면 이 묶음을 지운다.
+test_wn_16 wn16-no-file-created-outside
+test_wn_16b wn16b-lock-link-no-notice-stdout-empty
+test_wn_17 wn17-full-one-warning-line
+test_wn_17b wn17b-closed-one-warning-line
