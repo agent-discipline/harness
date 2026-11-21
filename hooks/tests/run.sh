@@ -124,6 +124,7 @@ snapshot_detail "$SNAP_BEFORE"
 
 # ── 테스트 수집·실행
 PASS=0; declare -a FAILS=()   # "test-id assert-id"
+declare -a SKIPS=()           # "test-id 사유" — 건너뜀은 통과가 아니다(lib.sh skip_test). 실패 판정에도 넣지 않는다.
 for casefile in cases/*.sh; do
   tests=$(discover_tests "$casefile") || { echo "수집 실패 — 중단" >&2; exit 1; }
   for t in $tests; do
@@ -136,7 +137,11 @@ for casefile in cases/*.sh; do
       "$t"
     } 2>&1 )
     rc=$?
-    if [ "$rc" = "0" ]; then
+    if [ "$rc" = "0" ] && printf '%s\n' "$out" | grep -q '^SKIP_TEST '; then
+      reason=$(printf '%s\n' "$out" | grep '^SKIP_TEST ' | tail -1 | awk '{print $3}')
+      SKIPS+=("$t ${reason:-unknown}")
+      [ "$MODE" = "normal" ] && echo "SKIP $t (${reason:-unknown})"
+    elif [ "$rc" = "0" ]; then
       PASS=$((PASS+1))
     else
       aid=$(printf '%s\n' "$out" | grep -E '^FAIL_ASSERT ' | tail -1 | awk '{print $3}')
@@ -160,7 +165,7 @@ fi
 
 # ── 판정
 if [ "$MODE" = "normal" ]; then
-  echo "── $PASS passed, ${#FAILS[@]} failed"
+  echo "── $PASS passed, ${#FAILS[@]} failed, ${#SKIPS[@]} skipped"
   [ "${#FAILS[@]}" = "0" ] && exit 0 || exit 1
 fi
 
@@ -171,7 +176,8 @@ fi
 expected=$(grep -vE '^\s*(#|$)' baseline.manifest | LC_ALL=C sort)
 actual=$(printf '%s\n' "${FAILS[@]+"${FAILS[@]}"}" | grep -v '^$' | LC_ALL=C sort)
 if [ "$expected" = "$actual" ]; then
-  echo "── baseline OK: $(printf '%s\n' "$expected" | grep -c .) expected-failure confirmed, $PASS green, 0 unexpected"
+  echo "── baseline OK: $(printf '%s\n' "$expected" | grep -c .) expected-failure confirmed, $PASS green, 0 unexpected, ${#SKIPS[@]} skipped"
+  if [ "${#SKIPS[@]}" -gt 0 ]; then printf '  skipped: %s\n' "${SKIPS[@]}"; fi
   exit 0
 fi
 echo "── baseline MISMATCH" >&2

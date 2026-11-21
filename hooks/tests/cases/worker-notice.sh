@@ -112,6 +112,19 @@ wn_assert_no_warning() { # <assert-id>
   [ "$count" = "0" ] || { echo "  [dbg] 경고 줄 수=$count stderr=$(printf '%s' "$HOOK_STDERR" | head -c 240)"; fail "$1-no-warning-line"; }
 }
 
+# 실패한 단계(명세 실패 정책 — 잠금 / 준비 / 출력 / 확정)를 경고 한 줄이 구분하나: 그 단계 낱말은 있고 다른 세 낱말은 없다.
+#   문구 전체는 고정하지 않는다(구현자 몫). 경고 줄이 정확히 한 줄인지는 wn_assert_one_warning 이 따로 본다.
+WN_STAGE_WORDS="잠금 준비 출력 확정"
+wn_assert_stage() { # <assert-id> <단계 낱말> [stderr 문자열 — 기본 HOOK_STDERR]
+  local line word
+  line=$(printf '%s\n' "${3-$HOOK_STDERR}" | grep -a '^\[gate-guard\] 경고' | head -1)
+  case "$line" in *"$2"*) ;; *) echo "  [dbg] 경고=$line"; fail "$1-stage-$2"; ;; esac
+  for word in $WN_STAGE_WORDS; do
+    [ "$word" = "$2" ] && continue
+    case "$line" in *"$word"*) echo "  [dbg] 경고=$line"; fail "$1-stage-not-$word" ;; esac
+  done
+}
+
 # ── 기준 커밋(알림 없음)과의 비교 ───────────────────────────────────────────────
 wn_legacy_init() { # fixture 사본 → $WN_LEGACY_DIR (SCRIPT_DIR 기준 state-lib.sh source 가 사본끼리 맞물림)
   WN_LEGACY_DIR="$SANDBOX/legacy-gate"
@@ -528,7 +541,9 @@ test_wn_12b() { # [명세 알림이 나가도 종료 코드와 차단 판정이 
 # ══ 13 실패 정책 — 통과가 우선 ════════════════════════════════════════════════
 
 test_wn_13() { # [명세 실패 정책: 사이드카 기록 실패 → 알림 없이 조용히 통과] 상태 디렉토리 읽기 전용 → exit 0·알림 없음, 풀리면 낸다
-  wn_root_skip && return 0
+  # root 는 디렉토리 권한을 무시해 읽기 전용을 만들 수 없다 — 건너뜀으로 따로 센다(통과 아님). 같은 "잠금 실패" 계약은
+  #   권한에 기대지 않는 wn_13b(flock 래퍼)·wn_16(잠금 자리 심링크)이 root 에서도 본다.
+  if wn_root_skip; then skip_test root-ignores-directory-permission; fi
   local folder; folder=$(wn_task_dir readonly)
   wn_state auto 0 0 1 "$folder"
   wn_gitignore; : > "$STATE.lock"                    # 기존 판정(상태 검증)은 읽기 전용에서도 통과하게 준비(gt_06 관례)
@@ -544,6 +559,7 @@ test_wn_13() { # [명세 실패 정책: 사이드카 기록 실패 → 알림 �
   wn_assert_quiet 0 wn13-readonly-pass-again
   wn_assert_one_warning wn13-readonly "$readonly_stderr"
   wn_assert_one_warning wn13-readonly-again "$readonly_stderr_again"
+  wn_assert_stage wn13-readonly 잠금 "$readonly_stderr"                       # 읽기 전용이면 처음 실패하는 단계는 잠금(잠금 파일을 못 만든다)
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn13-control-after-writable   # 실패한 호출은 "한 번"을 소비 못 했다
 }
 
@@ -571,6 +587,7 @@ WRAP
     wn_gate PreToolUse Write "$REPO/src/a.c"
   assert_exit 0 wn13b-flock-fail-pass
   wn_assert_one_warning wn13b-flock-fail
+  wn_assert_stage wn13b-flock-fail 잠금
   wn_assert_empty_or_notice wn13b-flock-fail
   # 재현 성립: 알림 기록이 상태 lock 과 다른 잠금(gate-guard.sh worker_notice 6b0a43c — <sidecar>.lock)을 잡다 실패했다.
   #   구현이 잠금 방식을 바꿔 래퍼가 안 걸리면 이 단언이 빨강으로 알린다(사례가 조용히 약해지지 않게).
@@ -657,53 +674,65 @@ test_wn_14() { # [명세 동시에 들어온 호출 중 하나만 낸다("이미
   assert_state SCHEMA 4 wn14-schema-intact
 }
 
-test_wn_14b() { # [명세 "이미 냈나 확인 → 기록"이 한 잠금 안] 확인과 기록 사이를 넓혀도 동시 8개 중 알림은 정확히 1개
-  # 왜 따로 있나: wn_14 만으로는 잠금을 빼도 통과한다(구현 뮤테이션 실측 40/40) — 8개 호출이 앞의 상태 lock 에서
-  #   직렬화된 뒤 경로 길이가 거의 같아, 호출 사이 간격이 "확인 → 기록" 창(몇 ms)보다 길다. 그래서 창을 넓힌다.
-  # 방법: PATH 앞의 mktemp 래퍼가 **상태 디렉토리 안** 임시 파일을 만들 때만 WN_MKTEMP_DELAY 초 잔 뒤 진짜 mktemp 를 부른다.
-  #   이 경로(유효 상태 + .gitignore 있음)에서 상태 디렉토리에 mktemp 를 쓰는 것은 알림 기록뿐이다(state_ensure_valid 는
-  #   유효 상태에 쓰지 않고, .gitignore 는 미리 둔다). 잠금이 없으면 8개가 모두 "아직 안 냄"을 확인한 채 잠들어 여럿이 낸다.
-  # 구현 의존(이름 무관 원칙의 예외 — 이 사례만): "기록이 상태 디렉토리의 mktemp 임시 파일 → mv" 라는 구현 방식에 기댄다
-  #   (gate-guard.sh worker_notice, 6b0a43c). 파일 이름에는 기대지 않는다. 구현이 mktemp 를 안 쓰게 바뀌면 래퍼가 걸리지
-  #   않아 이 사례가 조용히 약해지므로, 래퍼가 실제로 걸렸는지(재현 성립)를 먼저 단언한다 — 그때는 빨강으로 알린다.
-  # 지연 길이 근거: 1.5초. ① 거짓 초록 방지 — 잠금이 없을 때 빨강이 되려면 두 호출이 첫 호출의 기록(mv) 전에 확인만
-  #   하면 된다. 8개의 도착 간격(실측 수십~수백 ms)보다 1.5초가 몇 배 길어 느린 기계에서도 둘 이상이 창 안에 든다.
-  #   ② 거짓 빨강 방지 — 잠금이 있으면 첫 호출이 잠금을 쥔 채 1.5초 자고, 나머지는 flock -w 2 로 기다리다 "이미 냄"을 본다.
-  #   느린 기계에서 대기가 2초를 넘어도 그 호출은 "기록 실패 → 알림 생략"이라 알림은 늘지 않는다(1개 유지) — 지연이
-  #   길어질수록 알림이 줄 수는 있어도 늘 수는 없어, 초록 판정은 시간에 기대지 않는다. 0개도 실패로 본다(첫 호출은
-  #   잠금 대기 없이 기록하므로 정상 구현에서 0개는 나오지 않는다).
-  local folder; folder=$(wn_task_dir concurrent-widened)
+test_wn_14b() { # [명세 "이미 냈나 확인 → 기록"이 한 잠금 안 · T8] 장벽으로 경합을 성립시켜도 확인 지점 동시 체류는 1, 알림은 정확히 1개
+  # 왜 따로 있나: wn_14 만으로는 잠금을 빼도 통과한다(실측 40/40) — 호출 사이 간격이 "확인 → 기록" 창보다 길다.
+  # 방법(시간이 아니라 장벽 — 리뷰 루프 2 T8): PATH 앞의 mktemp 래퍼가 **상태 디렉토리 안** 임시 파일을 만들 때(= 이미 냈나 확인을
+  #   통과한 뒤의 준비 단계) 장벽에 도착 표식을 남기고, **다른 호출이 하나 더 도착할 때까지** 기다렸다가 함께 진행한다.
+  #   기다리는 동안 "지금 장벽에 머무는 호출 수"를 기록한다. 잠금이 없으면 둘째 호출도 "아직 안 냄"을 보고 장벽에 도착해
+  #   체류 수가 2 이상이 된다(경합이 성립했다는 직접 증거). 잠금이 있으면 첫 호출이 잠금을 쥔 채 장벽에 있어 다른 호출은 확인
+  #   지점에 닿지 못한다 — 체류 수는 언제나 1 이다. 그래서 장벽은 시간 제한(WN_BARRIER_TIMEOUT_MS) 뒤 혼자서도 풀린다.
+  # 시간 제한의 뜻: 판정은 시간에 기대지 않는다. 잠금이 있으면 장벽은 늘 시간 제한으로 풀리고(체류 1·알림 1 — 제한 길이와 무관,
+  #   기다리던 호출이 flock -w 2 를 넘기면 "잠금 실패 → 생략"이라 알림이 늘지 않는다). 잠금이 없으면 빨강이 되려면 둘째 호출이
+  #   첫 도착 뒤 제한(5초) 안에 확인 지점에 닿기만 하면 된다 — 동시에 띄운 8개의 도착 간격(수십~수백 ms)보다 넉넉하다.
+  # 구현 의존(이름 무관 원칙의 예외 — 이 사례만): "준비 단계가 상태 디렉토리의 mktemp" 라는 구현 방식(6b0a43c·명세 ①준비=임시 파일).
+  #   래퍼가 한 번도 걸리지 않으면 장벽이 무력하므로 도착 수 ≥ 1 을 먼저 단언한다(조용히 약해지지 않게).
+  local folder; folder=$(wn_task_dir concurrent-barrier)
   wn_state auto 0 0 1 "$folder"
   wn_gitignore
   local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
-  local fake="$SANDBOX/fakemktemp"; mkdir -p "$fake"
+  local fake="$SANDBOX/barrier-mktemp"; mkdir -p "$fake"
   local real_mktemp; real_mktemp=$(command -v mktemp) || fail wn14b-mktemp-missing
-  local hits="$SANDBOX/mktemp.hits"; : > "$hits"
+  local barrier="$SANDBOX/barrier"; mkdir -p "$barrier"
   cat > "$fake/mktemp" <<'WRAP'
 #!/bin/bash
+in_state_dir=0
 for argument in "$@"; do
-  case "$argument" in
-    "$WN_STATE_DIR"/*) echo "$argument" >> "$WN_MKTEMP_HITS"; sleep "$WN_MKTEMP_DELAY"; break ;;
-  esac
+  case "$argument" in "$WN_STATE_DIR"/*) in_state_dir=1; break ;; esac
 done
+if [ "$in_state_dir" = 1 ]; then
+  : > "$WN_BARRIER/arrive.$$"
+  deadline=$(( $(date +%s%N) / 1000000 + WN_BARRIER_TIMEOUT_MS ))
+  while :; do
+    arrived=$(find "$WN_BARRIER" -maxdepth 1 -name 'arrive.*' | wc -l)
+    departed=$(find "$WN_BARRIER" -maxdepth 1 -name 'depart.*' | wc -l)
+    echo $(( arrived - departed )) >> "$WN_BARRIER/staying.$$"
+    [ "$arrived" -ge 2 ] && break
+    [ "$(( $(date +%s%N) / 1000000 ))" -ge "$deadline" ] && break
+    sleep 0.02
+  done
+  : > "$WN_BARRIER/depart.$$"
+fi
 exec "$WN_REAL_MKTEMP" "$@"
 WRAP
   chmod +x "$fake/mktemp"
-  local race="$SANDBOX/race-widened"; mkdir -p "$race"
+  local race="$SANDBOX/race-barrier"; mkdir -p "$race"
   local pids="" index process
   for index in 1 2 3 4 5 6 7 8; do
     (
       set +e
       printf '%s' "$json" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
-        XDG_CONFIG_HOME="$XDG_DIR" PATH="$fake:$PATH" WN_REAL_MKTEMP="$real_mktemp" WN_MKTEMP_HITS="$hits" \
-        WN_MKTEMP_DELAY=1.5 WN_STATE_DIR="$STATE_DIR" \
+        XDG_CONFIG_HOME="$XDG_DIR" PATH="$fake:$PATH" WN_REAL_MKTEMP="$real_mktemp" WN_BARRIER="$barrier" \
+        WN_BARRIER_TIMEOUT_MS=5000 WN_STATE_DIR="$STATE_DIR" \
         bash "$HOOKS_DIR/gate-guard.sh" > "$race/out.$index" 2> "$race/err.$index"
       echo $? > "$race/exit.$index"
     ) &
     pids="$pids $!"
   done
   for process in $pids; do wait "$process" || true; done
-  [ -s "$hits" ] || fail wn14b-widening-reproduced       # 래퍼가 기록 단계에 걸리지 않았다 = 창을 못 넓힘(사례 무력)
+  local arrivals; arrivals=$(find "$barrier" -maxdepth 1 -name 'arrive.*' | wc -l)
+  [ "$arrivals" -ge 1 ] || fail wn14b-barrier-reached          # 재현 성립: 준비 단계(mktemp)가 장벽에 걸렸다
+  local most_staying; most_staying=$(cat "$barrier"/staying.* 2>/dev/null | sort -n | tail -1)
+  [ "$most_staying" = "1" ] || { echo "  [dbg] 장벽 동시 체류 최대=$most_staying 도착=$arrivals"; fail wn14b-one-at-check-point; }
   local notices=0 output
   for index in 1 2 3 4 5 6 7 8; do
     [ "$(cat "$race/exit.$index" 2>/dev/null)" = "0" ] || { echo "  [dbg] #$index exit=$(cat "$race/exit.$index" 2>/dev/null)"; fail wn14b-all-exit-0; }
@@ -713,7 +742,7 @@ WRAP
       notices=$((notices + 1))
     fi
   done
-  [ "$notices" = "1" ] || { echo "  [dbg] notices=$notices hits=$(wc -l < "$hits")"; fail wn14b-exactly-one-notice-widened; }
+  [ "$notices" = "1" ] || { echo "  [dbg] notices=$notices 도착=$arrivals"; fail wn14b-exactly-one-notice; }
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn14b-after-race-quiet
 }
 
@@ -814,6 +843,7 @@ test_wn_16() { # [S1 · 명세 기억하는 곳 — 상태 디렉토리의 기�
   wn_assert_snapshot_same "$SANDBOX/outside.before" "$SANDBOX/outside.after" wn16-outside-unchanged
   wn_assert_quiet 0 wn16-lock-link-no-notice
   wn_assert_one_warning wn16-lock-link
+  wn_assert_stage wn16-lock-link 잠금
   rm -f "$(wn_notice_sidecar_path).lock"
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn16-not-consumed-after-link-removed
 }
@@ -832,22 +862,38 @@ test_wn_16b() { # [S1] 알림 잠금 자리가 바깥의 **있는** 파일을 �
   wn_assert_snapshot_same "$SANDBOX/outside.before" "$SANDBOX/outside.after" wn16b-outside-content-mtime-unchanged
   wn_assert_quiet 0 wn16b-lock-link-no-notice
   wn_assert_one_warning wn16b-lock-link
+  wn_assert_stage wn16b-lock-link 잠금
   rm -f "$(wn_notice_sidecar_path).lock"
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn16b-not-consumed-after-link-removed
 }
 
-# stdout 을 쓸 수 없는 상태로 훅을 부른다. mode: full(/dev/full — 쓰기가 ENOSPC 로 실패) | closed(>&- — 쓰기가 EBADF 로 실패)
+# stdout 을 쓸 수 없는 상태로 훅을 부른다.
+#   mode: full(/dev/full — 쓰기가 ENOSPC) | closed(>&- — 쓰기가 EBADF) | pipe(읽는 쪽이 이미 닫힌 파이프 — 쓰기가 SIGPIPE/EPIPE)
+#   pipe 는 시간에 기대지 않게 만든다: FIFO 를 읽기·쓰기로 한 번 열어(막히지 않음) 쓰기 끝을 하나 더 연 뒤 첫 fd 를 닫으면,
+#   남은 쓰기 끝에는 읽는 쪽이 없다 — 훅이 쓰는 순간 반드시 SIGPIPE 다("읽는 쪽이 먼저 끝난" 파이프의 결정적 재현).
+wn_open_broken_pipe() { # → fd 8 = 읽는 쪽 없는 파이프의 쓰기 끝
+  local fifo="$SANDBOX/broken-pipe.fifo"
+  rm -f "$fifo"; mkfifo "$fifo" || fail broken-pipe-mkfifo
+  exec 7<>"$fifo"; exec 8>"$fifo"; exec 7<&-
+}
+wn_close_broken_pipe() { exec 8>&- 2>/dev/null || true; }
 wn_run_unwritable_stdout() { # <mode> <json> → HOOK_EXIT · HOOK_STDERR
   local err="$SANDBOX/$WN_CAPTURE_DIR_NAME/unwritable.err"; mkdir -p "$SANDBOX/$WN_CAPTURE_DIR_NAME"
   set +e
-  if [ "$1" = "full" ]; then
-    printf '%s' "$2" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
-      XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/gate-guard.sh" > /dev/full 2> "$err"
-  else
-    printf '%s' "$2" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
-      XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/gate-guard.sh" >&- 2> "$err"
-  fi
+  case "$1" in
+    full)
+      printf '%s' "$2" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/gate-guard.sh" > /dev/full 2> "$err" ;;
+    closed)
+      printf '%s' "$2" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/gate-guard.sh" >&- 2> "$err" ;;
+    pipe)
+      wn_open_broken_pipe
+      printf '%s' "$2" | env HOME="$HOME_DIR" GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null \
+        XDG_CONFIG_HOME="$XDG_DIR" bash "$HOOKS_DIR/gate-guard.sh" >&8 2> "$err" ;;
+  esac
   HOOK_EXIT=$?
+  [ "$1" = "pipe" ] && wn_close_broken_pipe
   set -e
   HOOK_STDERR=$(cat "$err")
 }
@@ -855,20 +901,25 @@ wn_run_unwritable_stdout() { # <mode> <json> → HOOK_EXIT · HOOK_STDERR
 wn_assert_unwritable_reproduces() { # <mode> <assert-id>
   local rc
   set +e
-  if [ "$1" = "full" ]; then bash -c 'printf "%s\n" x' > /dev/full 2>/dev/null; rc=$?
-  else bash -c 'printf "%s\n" x' >&- 2>/dev/null; rc=$?; fi
+  case "$1" in
+    full)   bash -c 'printf "%s\n" x' > /dev/full 2>/dev/null; rc=$? ;;
+    closed) bash -c 'printf "%s\n" x' >&- 2>/dev/null; rc=$? ;;
+    pipe)   wn_open_broken_pipe; bash -c 'printf "%s\n" x' >&8 2>/dev/null; rc=$?; wn_close_broken_pipe ;;
+  esac
   set -e
   [ "$rc" != "0" ] || fail "$2"
 }
 
 test_wn_17() { # [S2 · 명세 실패한 호출은 "한 번"을 소비하지 않는다] stdout 이 /dev/full(출력 실패) → exit 0 · 경고 한 줄 · 정상 stdout 의 다음 호출에 알림
-  [ -w /dev/full ] || return 0                                               # /dev/full 없는 환경은 wn_17b 가 같은 계약을 본다
+  # /dev/full 이 없는 환경(비 Linux 등)은 건너뜀으로 따로 센다 — 같은 계약은 환경에 기대지 않는 wn_17b(닫힌 stdout)·wn_22(닫힌 파이프)가 본다.
+  [ -w /dev/full ] || skip_test no-dev-full
   wn_assert_unwritable_reproduces full wn17-precondition-printf-fails
   local folder; folder=$(wn_task_dir stdout-full)
   wn_state auto 0 0 1 "$folder"; wn_gitignore
   wn_run_unwritable_stdout full "$(wn_json PreToolUse Write "$REPO/src/a.c")"
   assert_exit 0 wn17-full-exit
   wn_assert_one_warning wn17-full
+  wn_assert_stage wn17-full 출력
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn17-not-consumed-after-output-failure
 }
 
@@ -879,6 +930,7 @@ test_wn_17b() { # [S2] stdout 이 닫힘(>&-) → exit 0 · 경고 한 줄 · �
   wn_run_unwritable_stdout closed "$(wn_json PreToolUse Write "$REPO/src/a.c")"
   assert_exit 0 wn17b-closed-exit
   wn_assert_one_warning wn17b-closed
+  wn_assert_stage wn17b-closed 출력
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn17b-not-consumed-after-output-failure
 }
 
@@ -893,24 +945,30 @@ test_wn_18() { # [S3① · 명세 실패 정책] 기록용 임시 파일(mktemp)
   [ -s "$WN_FAIL_HITS" ] || fail wn18-mktemp-failure-reproduced              # 재현 성립: 기록 단계의 mktemp 가 실제로 실패했다
   wn_assert_quiet 0 wn18-mktemp-fail-no-notice
   wn_assert_one_warning wn18-mktemp-fail
+  wn_assert_stage wn18-mktemp-fail 준비
   [ ! -e "$(wn_notice_sidecar_path)" ] || fail wn18-no-sidecar-written
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn18-not-consumed
 }
 
-test_wn_18b() { # [S3 실패 시 임시 파일 정리] 기록의 mv 실패 → exit 0 · 알림 없음 · 경고 한 줄 · 임시 파일 잔재 없음 · 소비 안 함
+test_wn_18b() { # [T9 · 명세 실패 정책 ③만 실패] 확정(mv)만 실패 → 알림은 이미 나갔다 · 경고("확정") 한 줄 · 임시 파일 잔재 없음 ·
+  #   기록이 없으니 다음 정상 호출에 알림이 **한 번 더** 나가고, 그 뒤로는 안 나간다(명세: 빠지지 않게, 드물게 한 번 더는 받아들인다).
+  # 이전 기대값(mv 실패 → stdout 없음)은 11-22 실패 정책 재설계(준비 → 출력 → 확정)와 충돌해 바꿨다(리뷰 루프 2 T9).
   local folder; folder=$(wn_task_dir mv-fail)
   wn_state auto 0 0 1 "$folder"; wn_gitignore
   wn_fail_wrapper mv
   local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
   PATH="$WN_FAIL_BIN:$PATH" WN_STATE_DIR="$STATE_DIR" wn_gate_json "$json"
   [ -s "$WN_FAIL_HITS" ] || fail wn18b-mv-failure-reproduced
-  wn_assert_quiet 0 wn18b-mv-fail-no-notice
-  wn_assert_one_warning wn18b-mv-fail
+  wn_assert_notice wn18b-confirm-fail-notice-already-out
+  wn_assert_one_warning wn18b-confirm-fail
+  wn_assert_stage wn18b-confirm-fail 확정
   # 이름 의존: 임시 파일 형판 `.worker-notice.XXXXXX`(구현 6b0a43c). 잔재가 없어야 한다.
   local leftovers; leftovers=$(find "$STATE_DIR" -maxdepth 1 -name '.worker-notice.*' 2>/dev/null | head -3)
   [ -z "$leftovers" ] || { echo "  [dbg] 잔재=$leftovers"; fail wn18b-no-temporary-leftover; }
   [ ! -e "$(wn_notice_sidecar_path)" ] || fail wn18b-no-sidecar-written
-  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn18b-not-consumed
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn18b-notice-once-more-after-confirm-fail
+  wn_assert_no_warning wn18b-recall
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn18b-quiet-after-recorded
 }
 
 test_wn_19() { # [S3② · 명세 심링크 보호] 사이드카 자리가 바깥 파일을 가리키는 심링크 → exit 0 · 알림 없음 · 바깥 파일 무변경 · 경고 한 줄
@@ -951,16 +1009,163 @@ test_wn_19c() { # [S3②] 사이드카 자리가 FIFO → 막히지 않고 exit 
   wn_assert_one_warning wn19c-sidecar-fifo
 }
 
-test_wn_19d() { # [S3③] 사이드카 읽기 실패(권한 000) → exit 0 · 알림 없음 · 경고 한 줄 · 권한이 돌아오면 같은 폴더에서 낸다(소비 안 함)
-  wn_root_skip && return 0
+# 사이드카를 읽는 명령(grep·cat·awk·sed·head·tail)이 사이드카 경로를 인자로 받으면 읽기 실패(rc 2)로 끝나는 래퍼 — root 여부와 무관.
+#   이름 의존: `<sid>.worker-notice`. 셸 내장 읽기(`read < 파일`)는 가로채지 못한다 — 그때는 재현 단언이 빨강으로 알린다.
+wn_read_fail_wrappers() { # → WN_READ_FAIL_BIN · WN_READ_FAIL_HITS
+  WN_READ_FAIL_BIN="$SANDBOX/read-fail"; mkdir -p "$WN_READ_FAIL_BIN"
+  WN_READ_FAIL_HITS="$SANDBOX/read-fail.hits"; : > "$WN_READ_FAIL_HITS"
+  local command_name real
+  for command_name in grep cat awk sed head tail; do
+    real=$(command -v "$command_name") || continue
+    cat > "$WN_READ_FAIL_BIN/$command_name" <<WRAP
+#!/bin/bash
+for argument in "\$@"; do
+  if [ "\$argument" = "\$WN_SIDECAR" ]; then echo "$command_name" >> "$WN_READ_FAIL_HITS"; exit 2; fi
+done
+exec "$real" "\$@"
+WRAP
+    chmod +x "$WN_READ_FAIL_BIN/$command_name"
+  done
+}
+
+test_wn_19d() { # [S3③ · T6] 사이드카 읽기 실패(읽는 명령이 rc 2 — 권한에 기대지 않는 주입) → exit 0 · 알림 없음 · 경고 한 줄 · 소비 안 함
   local folder; folder=$(wn_task_dir sidecar-unreadable)
   wn_state auto 0 0 1 "$folder"; wn_gitignore
   printf '%s\n' "$REPO/docs/plans/2026-11-21/some-other-folder" > "$(wn_notice_sidecar_path)"   # 다른 폴더만 기억
-  chmod 000 "$(wn_notice_sidecar_path)"
-  [ ! -r "$(wn_notice_sidecar_path)" ] || { chmod 644 "$(wn_notice_sidecar_path)"; fail wn19d-precondition-unreadable; }
-  wn_gate PreToolUse Write "$REPO/src/a.c"
-  chmod 644 "$(wn_notice_sidecar_path)"
+  cp "$(wn_notice_sidecar_path)" "$SANDBOX/sidecar.before"
+  wn_read_fail_wrappers
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  PATH="$WN_READ_FAIL_BIN:$PATH" WN_SIDECAR="$(wn_notice_sidecar_path)" wn_gate_json "$json"
+  [ -s "$WN_READ_FAIL_HITS" ] || fail wn19d-read-failure-reproduced
   wn_assert_quiet 0 wn19d-unreadable-no-notice
   wn_assert_one_warning wn19d-unreadable
+  cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" || fail wn19d-sidecar-bytes-unchanged
   wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn19d-not-consumed
+}
+
+test_wn_19e() { # [S3③] 사이드카 권한 000(실제 파일 시스템의 읽기 실패) → 19d 와 같은 계약. root 는 권한을 무시하므로 건너뜀으로 센다
+  if wn_root_skip; then skip_test root-ignores-file-permission; fi
+  local folder; folder=$(wn_task_dir sidecar-mode-000)
+  wn_state auto 0 0 1 "$folder"; wn_gitignore
+  printf '%s\n' "$REPO/docs/plans/2026-11-21/some-other-folder" > "$(wn_notice_sidecar_path)"
+  chmod 000 "$(wn_notice_sidecar_path)"
+  [ ! -r "$(wn_notice_sidecar_path)" ] || { chmod 644 "$(wn_notice_sidecar_path)"; fail wn19e-precondition-unreadable; }
+  wn_gate PreToolUse Write "$REPO/src/a.c"
+  chmod 644 "$(wn_notice_sidecar_path)"
+  wn_assert_quiet 0 wn19e-unreadable-no-notice
+  wn_assert_one_warning wn19e-unreadable
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn19e-not-consumed
+}
+
+# ══ 20·21·22 리뷰 루프 2 — 실패 정책 재설계(준비 → 출력 → 확정, 한 잠금 안, 되돌리기 없음) — 구현 전 작성 ═════════
+# 이름 의존: 사이드카 `<sid>.worker-notice`(바이트 비교용 — 미리 다른 작업 폴더의 기록을 둔다).
+
+test_wn_20() { # [T1·T4 · 명세 ①·② 실패 → ③ 안 함, 사이드카는 바이트까지 그대로(다른 폴더 기록도)] 출력 실패 3방식 → 사이드카 불변 · 다음 정상 호출에 1회
+  local folder_x folder_y folder; folder_x=$(wn_task_dir keep-x); folder_y=$(wn_task_dir keep-y); folder=$(wn_task_dir output-fail-bytes)
+  wn_state auto 0 0 1 "$folder"; wn_gitignore
+  printf '%s\n%s\n' "$folder_x" "$folder_y" > "$(wn_notice_sidecar_path)"
+  cp "$(wn_notice_sidecar_path)" "$SANDBOX/sidecar.before"
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  local mode
+  for mode in closed pipe full; do
+    if [ "$mode" = "full" ] && [ ! -w /dev/full ]; then continue; fi          # full 은 있을 때만(나머지 둘이 환경 무관)
+    wn_assert_unwritable_reproduces "$mode" "wn20-$mode-precondition-printf-fails"
+    wn_run_unwritable_stdout "$mode" "$json"
+    assert_exit 0 "wn20-$mode-exit"
+    wn_assert_one_warning "wn20-$mode"
+    wn_assert_stage "wn20-$mode" 출력
+    cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" \
+      || { echo "  [dbg] after=$(tr '\n' '|' < "$(wn_notice_sidecar_path)")"; fail "wn20-$mode-sidecar-bytes-unchanged"; }
+    [ -z "$(find "$STATE_DIR" -maxdepth 1 -name '.worker-notice.*' 2>/dev/null)" ] || fail "wn20-$mode-no-temporary-leftover"
+  done
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn20-notice-once-after-output-failures
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn20-then-quiet
+  wn_state auto 0 0 1 "$folder_x"; wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn20-other-folder-x-kept
+  wn_state auto 0 0 1 "$folder_y"; wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn20-other-folder-y-kept
+}
+
+test_wn_20b() { # [T1 · 명세 되돌리기 단계가 없다] 출력 실패에 더해 상태 디렉토리의 **두 번째** mktemp 도 실패 → 그래도 사이드카 불변 · 다음 호출에 알림
+  # 옛 방식(기록 → 출력 → 실패 시 되돌리기)은 되돌리기용 임시 파일이 두 번째 mktemp 라, 그것이 실패하면 기록이 남아 "한 번"을 소비했다.
+  #   새 순서에는 두 번째 mktemp 가 없으니 이 래퍼는 걸리지 않을 수 있다 — 걸렸는지는 단언하지 않는다(결과만 본다).
+  local folder_x folder; folder_x=$(wn_task_dir keep-x2); folder=$(wn_task_dir output-and-second-temp-fail)
+  wn_state auto 0 0 1 "$folder"; wn_gitignore
+  printf '%s\n' "$folder_x" > "$(wn_notice_sidecar_path)"
+  cp "$(wn_notice_sidecar_path)" "$SANDBOX/sidecar.before"
+  local fake="$SANDBOX/second-mktemp-fail"; mkdir -p "$fake"
+  local real_mktemp; real_mktemp=$(command -v mktemp) || fail wn20b-mktemp-missing
+  local counter="$SANDBOX/state-dir-mktemp.count"; : > "$counter"
+  cat > "$fake/mktemp" <<WRAP
+#!/bin/bash
+for argument in "\$@"; do
+  case "\$argument" in
+    "\$WN_STATE_DIR"/*) echo x >> "$counter"; [ "\$(wc -l < "$counter")" -ge 2 ] && exit 1; break ;;
+  esac
+done
+exec "$real_mktemp" "\$@"
+WRAP
+  chmod +x "$fake/mktemp"
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  PATH="$fake:$PATH" WN_STATE_DIR="$STATE_DIR" wn_run_unwritable_stdout closed "$json"
+  assert_exit 0 wn20b-exit
+  wn_assert_one_warning wn20b
+  cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" \
+    || { echo "  [dbg] after=$(tr '\n' '|' < "$(wn_notice_sidecar_path)")"; fail wn20b-sidecar-bytes-unchanged; }
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn20b-not-consumed
+  wn_state auto 0 0 1 "$folder_x"; wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn20b-other-folder-kept
+}
+
+test_wn_21() { # [T2 · 명세 준비 단계가 줄 경계를 보존] 끝 개행 없는 사이드카 `A` 에서 B 출력 실패 → A 유지 · 사이드카 불변 / B 성공 → A·B 각각 온전한 한 줄
+  local folder_a folder_b; folder_a=$(wn_task_dir no-eol-a); folder_b=$(wn_task_dir no-eol-b)
+  wn_gitignore
+  printf '%s' "$folder_a" > "$(wn_notice_sidecar_path)"                    # 끝 개행 없음
+  cp "$(wn_notice_sidecar_path)" "$SANDBOX/sidecar.before"
+  wn_state auto 0 0 1 "$folder_b"
+  wn_run_unwritable_stdout closed "$(wn_json PreToolUse Write "$REPO/src/a.c")"
+  assert_exit 0 wn21-output-fail-exit
+  cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" \
+    || { echo "  [dbg] after=$(od -c "$(wn_notice_sidecar_path)" | head -3 | tr '\n' ' ')"; fail wn21-sidecar-bytes-unchanged; }
+  wn_state auto 0 0 1 "$folder_a"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn21-a-still-remembered
+  wn_state auto 0 0 1 "$folder_b"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn21-b-notice
+  [ "$(grep -cxF -- "$folder_a" "$(wn_notice_sidecar_path)")" = "1" ] || { echo "  [dbg] $(tr '\n' '|' < "$(wn_notice_sidecar_path)")"; fail wn21-a-whole-line; }
+  [ "$(grep -cxF -- "$folder_b" "$(wn_notice_sidecar_path)")" = "1" ] || { echo "  [dbg] $(tr '\n' '|' < "$(wn_notice_sidecar_path)")"; fail wn21-b-whole-line; }
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn21-b-then-quiet
+  wn_state auto 0 0 1 "$folder_a"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn21-a-then-quiet
+}
+
+test_wn_21b() { # [T2 · 빈 TASK_PATH 변형] 끝 개행 없는 `A` 에서 "폴더 없음"(빈 TASK_PATH) 출력 실패 → 불변 · A 유지 / 성공 → A 줄과 빈 줄이 각각
+  local folder_a; folder_a=$(wn_task_dir no-eol-empty-a)
+  wn_gitignore
+  printf '%s' "$folder_a" > "$(wn_notice_sidecar_path)"
+  cp "$(wn_notice_sidecar_path)" "$SANDBOX/sidecar.before"
+  wn_state auto 0 0 1 -
+  wn_run_unwritable_stdout closed "$(wn_json PreToolUse Write "$REPO/src/a.c")"
+  assert_exit 0 wn21b-output-fail-exit
+  cmp -s "$SANDBOX/sidecar.before" "$(wn_notice_sidecar_path)" \
+    || { echo "  [dbg] after=$(od -c "$(wn_notice_sidecar_path)" | head -3 | tr '\n' ' ')"; fail wn21b-sidecar-bytes-unchanged; }
+  wn_state auto 0 0 1 "$folder_a"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn21b-a-still-remembered
+  wn_state auto 0 0 1 -
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn21b-empty-notice
+  [ "$(grep -cxF -- "$folder_a" "$(wn_notice_sidecar_path)")" = "1" ] || fail wn21b-a-whole-line
+  [ "$(grep -cx -- '' "$(wn_notice_sidecar_path)")" = "1" ] || { echo "  [dbg] $(od -c "$(wn_notice_sidecar_path)" | head -3 | tr '\n' ' ')"; fail wn21b-empty-whole-line; }
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn21b-empty-then-quiet
+  wn_state auto 0 0 1 "$folder_a"
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_quiet 0 wn21b-a-then-quiet
+}
+
+test_wn_22() { # [T3 · 명세 출력 대상이 닫혀 있어도(SIGPIPE) 훅은 죽지 않고 통과] 읽는 쪽이 닫힌 파이프 → exit 0 · 경고("출력") 한 줄 · 소비 안 함
+  local folder; folder=$(wn_task_dir broken-pipe)
+  wn_state auto 0 0 1 "$folder"; wn_gitignore
+  wn_assert_unwritable_reproduces pipe wn22-precondition-sigpipe
+  local json; json=$(wn_json PreToolUse Write "$REPO/src/a.c")
+  wn_run_unwritable_stdout pipe "$json"
+  assert_exit 0 wn22-broken-pipe-exit                                        # 141(SIGPIPE 로 죽음)이 아니라 0
+  wn_assert_one_warning wn22-broken-pipe
+  wn_assert_stage wn22-broken-pipe 출력
+  [ ! -e "$(wn_notice_sidecar_path)" ] || [ "$(grep -cxF -- "$folder" "$(wn_notice_sidecar_path)")" = "0" ] || fail wn22-not-recorded
+  wn_gate PreToolUse Write "$REPO/src/a.c"; wn_assert_notice wn22-not-consumed
+  wn_assert_no_warning wn22-normal-after
 }
