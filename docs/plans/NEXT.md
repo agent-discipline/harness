@@ -4,7 +4,7 @@
 
 ## 기준
 
-- 마지막 갱신: 2026-11-20 · 직전 완료 작업: `docs/plans/2026-11-20/decisions-service-communication/` · 병합 상태: 브랜치 `feat/decisions-service-communication`(PR 생성, 병합은 사용자 확인 뒤). 그 앞 `task-units`는 `main` 병합(`5a5eaf0`)
+- 마지막 갱신: 2026-11-22 · 직전 완료 작업: `docs/plans/2026-11-21/review-reproduction-impact/` · 병합 상태: PR #9 `main` 병합(`e267751`) · `deploy.sh` 배포 · smoke 통과(2026-11-22). 그 앞 `decisions-service-communication`은 PR #8 병합(`2f07fb0`)
 
 ## 다음 작업 후보 (우선순위순)
 
@@ -56,7 +56,7 @@
 
 ### N4. review.md 코드블록 → `hooks/review-packet.sh` 분리 — 우선순위: 낮음 · 2026-08-28 이월
 
-- review.md 116줄(≤80 초과). 이번에 mkpacket을 awk로 추출해 쓰며 placeholder 치환이 필요했음(관측).
+- review.md 131줄(≤80 초과 — 2026-11-21 재현 값 표 15줄 추가로 116 → 131). 이번에 mkpacket을 awk로 추출해 쓰며 placeholder 치환이 필요했음(관측).
 
 ### N5. 컴팩트를 넘어 유지할 것의 결정론적 재주입(아웃박스) + 응답 언어 강제 — **v4.5로 대체됨(2026-11-19)** · 원래: 우선순위 높음 · 사용자 지시(2026-11-17) · stakes 높음(훅·정책 변경)
 
