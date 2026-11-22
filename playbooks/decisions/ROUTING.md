@@ -8,7 +8,9 @@
 |---|---|
 | 서비스와 서비스가 어떻게 통신하나 (일관성, 동기 호출과 메시지, HTTP와 gRPC와 메시징, 암호화) | [service-communication.md](service-communication.md) |
 | 메시징을 골랐을 때 어느 방식을 쓰나 (이미 운영하는 브로커를 먼저 본다. 운영하는 브로커가 없어 처음 고를 때는 다시 읽기나 키 순서면 Kafka, 받는 곳 고르기면 RabbitMQ이고, 둘이 함께 필요하거나 어디에도 들지 않으면 묻는다 — 자세한 것은 `messaging.md` 1절. Redis Streams는 이미 Redis를 운영할 때만. NATS와 클라우드 큐는 특성이 있다) | [messaging.md](messaging.md) |
-| 웹과 서버가 어떻게 통신하나 (HTTP, GraphQL, SSE, WebSocket) | `client-communication.md` (작성 중) |
+| 브라우저(웹 화면, 관리자 화면)와 서버가 어떻게 통신하나 (운영하는 방식이나 이 화면이 이미 연 연결이 채우면 그것을 쓰고, 채우지 못하면 묻는다. 운영하는 방식이 없어 처음 고를 때는 HTTP + JSON이 기본이고 GraphQL, SSE, WebSocket을 고르는 경우가 있다 — 자세한 것은 `client-communication.md` 1절. 브라우저는 gRPC로 부르지 않는다) | [client-communication.md](client-communication.md) |
+| 파일 전송(올리기, 내려받기)과 미디어 스트리밍(영상, 음악)을 어떻게 보내나 | (작성 예정) |
+| 모바일 앱과 서버가 어떻게 통신하나 | (작성 예정) |
 | 통신의 중요도 등급과 타임아웃, 재시도, 장애 대응 | `communication-reliability.md` (작성 중) |
 | 외부 시스템과 어떻게 붙나 | (작성 예정) |
 | 백엔드의 구조를 어떻게 짜나 (무엇을 단위로 묶고, 묶음 안을 어떻게 나누고, 언제 공유로 빼나) | (작성 예정) |
