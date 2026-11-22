@@ -8,7 +8,7 @@
 |---|---|
 | 서비스와 서비스가 어떻게 통신하나 (일관성, 동기 호출과 메시지, HTTP와 gRPC와 메시징, 암호화) | [service-communication.md](service-communication.md) |
 | 메시징을 골랐을 때 어느 방식을 쓰나 (이미 운영하는 브로커를 먼저 본다. 운영하는 브로커가 없어 처음 고를 때는 다시 읽기나 키 순서면 Kafka, 받는 곳 고르기면 RabbitMQ이고, 둘이 함께 필요하거나 어디에도 들지 않으면 묻는다 — 자세한 것은 `messaging.md` 1절. Redis Streams는 이미 Redis를 운영할 때만. NATS와 클라우드 큐는 특성이 있다) | [messaging.md](messaging.md) |
-| 브라우저(웹 화면, 관리자 화면)와 서버가 어떻게 통신하나 (운영하는 방식이나 이 화면이 이미 연 연결이 채우면 그것을 쓰고, 채우지 못하면 묻는다. 운영하는 방식이 없어 처음 고를 때는 HTTP + JSON이 기본이고 GraphQL, SSE, WebSocket을 고르는 경우가 있다 — 자세한 것은 `client-communication.md` 1절. 브라우저는 gRPC로 부르지 않는다) | [client-communication.md](client-communication.md) |
+| 브라우저(웹 화면, 관리자 화면)와 서버가 어떻게 통신하나 (호출마다 필요를 먼저 나눈다 — 묻고 한 번 답하면 HTTP + JSON, 따로 만드는 클라이언트가 둘 이상이고 같은 데이터를 다른 모양으로 물으면 GraphQL, 서버에서 보내면 SSE, 함께 편집의 입력이면 WebSocket. 이 화면이 연 연결이 그 필요를 채우면 그것을 쓰고, 줄의 방식을 아직 운영하지 않으면 운영하는 방식 가운데 같은 필요를 채우는 것을 쓰고, 그것도 없으면 처음 고를 때만 줄을 따르고 그 밖에는 묻는다. GraphQL로 묻는 화면의 실시간 값, 함께 편집이 아닌 양방향, 인증 같은 예외와 묻는 경우, 그 밖의 자세한 것은 `client-communication.md` 1절. 브라우저는 gRPC로 부르지 않는다) | [client-communication.md](client-communication.md) |
 | 파일 전송(올리기, 내려받기)과 미디어 스트리밍(영상, 음악)을 어떻게 보내나 | (작성 예정) |
 | 모바일 앱과 서버가 어떻게 통신하나 | (작성 예정) |
 | 통신의 중요도 등급과 타임아웃, 재시도, 장애 대응 | `communication-reliability.md` (작성 중) |
