@@ -7,7 +7,7 @@
 | 정하려는 것 | 읽을 문서 |
 |---|---|
 | 서비스와 서비스가 어떻게 통신하나 (일관성, 동기 호출과 메시지, HTTP와 gRPC와 메시징, 암호화) | [service-communication.md](service-communication.md) |
-| 메시징을 골랐을 때 어느 방식을 쓰나 (Kafka, RabbitMQ, Redis Streams, NATS, 클라우드 큐의 특성) | [messaging.md](messaging.md) |
+| 메시징을 골랐을 때 어느 방식을 쓰나 (Kafka, RabbitMQ, Redis Streams 가운데 무엇인가. NATS와 클라우드 큐는 특성만) | [messaging.md](messaging.md) |
 | 웹과 서버가 어떻게 통신하나 (HTTP, GraphQL, SSE, WebSocket) | `client-communication.md` (작성 중) |
 | 통신의 중요도 등급과 타임아웃, 재시도, 장애 대응 | `communication-reliability.md` (작성 중) |
 | 외부 시스템과 어떻게 붙나 | (작성 예정) |
@@ -19,7 +19,7 @@
 
 ## 분기표의 줄은 이렇게 적는다
 
-모든 줄은 아래 여섯 칸을 가진다.
+선택이 있는 줄(분기표의 줄)은 아래 여섯 칸을 가진다. 선택이 없는 사실 표는 칸마다 출처를 달고 표 위에 확인한 날을 한 번 적는다.
 
 | 칸 | 내용 |
 |---|---|
