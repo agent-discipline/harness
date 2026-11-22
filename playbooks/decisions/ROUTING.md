@@ -7,7 +7,7 @@
 | 정하려는 것 | 읽을 문서 |
 |---|---|
 | 서비스와 서비스가 어떻게 통신하나 (일관성, 동기 호출과 메시지, HTTP와 gRPC와 메시징, 암호화) | [service-communication.md](service-communication.md) |
-| 메시징을 골랐을 때 어느 방식을 쓰나 (Kafka, RabbitMQ, Redis Streams, NATS, 클라우드 큐) | `messaging.md` (작성 중) |
+| 메시징을 골랐을 때 어느 방식을 쓰나 (Kafka, RabbitMQ, Redis Streams, NATS, 클라우드 큐의 특성) | [messaging.md](messaging.md) |
 | 웹과 서버가 어떻게 통신하나 (HTTP, GraphQL, SSE, WebSocket) | `client-communication.md` (작성 중) |
 | 통신의 중요도 등급과 타임아웃, 재시도, 장애 대응 | `communication-reliability.md` (작성 중) |
 | 외부 시스템과 어떻게 붙나 | (작성 예정) |
