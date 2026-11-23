@@ -52,6 +52,23 @@ print_manifest_diff() {
 
 print_manifest_diff
 
+# core.md 글자 수 상한(core §0.2) — 넘으면 stdout 한 줄 알림만, 배포는 막지 않는다(dry-run·실배포 공통).
+# 세는 법 = README(UTF-8 글자, 줄바꿈 포함). `wc -m` 은 C 로캘에서 바이트를 세므로 쓰지 않는다.
+# 셀 수 없으면(python3 없음·실행 실패) 조용히 넘어가지 않고 알린다 — `|| n=""` 로 set -e 즉사 차단.
+CORE_CHAR_LIMIT=15404
+check_core_size() {
+  local n
+  n=$(python3 -I -S -c 'import sys;print(len(open(sys.argv[1],encoding="utf-8").read()))' "$REPO/src/core.md" 2>/dev/null) || n=""
+  case "$n" in
+    ''|*[!0-9]*) echo "[deploy] 알림: src/core.md 글자 수를 세지 못함(python3 없음 또는 실행 실패) — 배포는 막지 않음." ;;
+    *) if [ "$n" -gt "$CORE_CHAR_LIMIT" ]; then
+         echo "[deploy] 알림: src/core.md ${n}자 — 상한 ${CORE_CHAR_LIMIT}자를 $((n - CORE_CHAR_LIMIT))자 넘음. 먼저 세부를 따로 된 문서로 분리하고, 안 되면 사용자와 상의(core §0.2). 배포는 막지 않음."
+       fi ;;
+  esac
+  return 0
+}
+check_core_size
+
 if [ "$DRY" = "1" ]; then
   echo "[deploy] 위 'DEST에만' 파일은 배포 시 삭제됨(repo 가 정본) — 의도인지 확인."
   echo "[deploy] dry-run — 실제 배포·smoke 는 수행하지 않음(기존 유지)."
