@@ -32,7 +32,7 @@
 - **Primitive Obsession**: 의미를 raw 타입(String·int)으로 — Value Object.
 - **Data Clumps**: 늘 함께 다니는 파라미터 떼 — Parameter Object.
 - **Message Chain (Demeter 위반)**: `a.b().c().d()` 사슬 — 직접 의존만 노출.
-- **Duplicate / Shotgun Surgery**: 한 변경에 여러 곳을 손대야 함 — 단일 출처로.
+- **Duplicate / Shotgun Surgery**: 한 변경에 여러 곳을 손대야 함 — 단일 출처로(어디로 빼나 = `decisions/shared-code.md`).
 
 ## 4. DDD 핵심 (harness가 약한 곳 — 기술 트랜잭션 ≠ 도메인 경계)
 

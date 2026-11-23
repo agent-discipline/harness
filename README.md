@@ -167,7 +167,7 @@ v4.8은 구현 주체를 core §5에 정했다. stakes 중간·높음의 L1(실�
 │   ├── open-source.md         #   외부 OSS 기여 절차
 │   ├── design-taste.md        #   설계 취향 카탈로그 (리뷰 렌즈·그룹핑 대화)
 │   ├── issue-archive.md       #   사이클 마감 — log의 CS 이슈를 study-note issue/로 추상화 아카이브(append-only·카드별 커밋)
-│   ├── decisions/             #   설계 선택 기준 — ROUTING.md(정하려는 것별로 읽을 문서, 줄의 형식(얻는 것·내주는 것·잴 것), 표에 없는 갈림을 만났을 때) · service-communication.md(서비스 간 통신 분기표) · messaging.md(메시징 방식 분기표) · client-communication.md(웹과 서버의 통신 분기표) · 작성 중: communication-reliability.md(중요도 등급과 장애 대응)
+│   ├── decisions/             #   설계 선택 기준 — ROUTING.md(정하려는 것별로 읽을 문서, 줄의 형식(얻는 것·내주는 것·잴 것), 표에 없는 갈림을 만났을 때) · service-communication.md(서비스 간 통신 분기표) · messaging.md(메시징 방식 분기표) · client-communication.md(웹과 서버의 통신 분기표) · shared-code.md(같은 코드를 공유 폴더로 빼나 라이브러리로 빼나) · 작성 중: communication-reliability.md(중요도 등급과 장애 대응)
 │   └── writing/               #   글쓰기 규칙 — ROUTING.md(쓰려는 문서별로 읽을 문서) · principles.md(공통 원칙) · wording-table.md(낱말 사례 표) · work-records.md(작업 기록) · diagrams.md(그림) · rule-docs.md(규칙 문서)
 ├── templates/
 │   ├── requirement-spec.md    #   ★ 진입 게이트 명세서 (필수 6칸 고정 — 빈 칸 금지 + 자율성 + load-bearing 가정)
