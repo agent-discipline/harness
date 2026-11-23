@@ -193,3 +193,24 @@ test_dc_07_notice_leaves_other_output_unchanged() {
   [ "$stripped" = "$base_stripped" ] || { diff <(printf '%s\n' "$base_stripped") <(printf '%s\n' "$stripped") | head -5 | sed 's/^/  [dbg] /'; fail dc07-stdout-same; }
   [ "$DC_ERR" = "$base_err" ] || { echo "  [dbg] stderr differs"; fail dc07-stderr-same; }
 }
+
+# [계약 ⑥④] src/core.md 가 UTF-8 로 읽을 수 없는 바이트를 담음(정상 15,405자 뒤에 \xff\xfe) → 세기가 실행 중 실패하는 경우.
+#   "글자 수를 세지 못함" 한 줄이 stdout 에 정확히 한 번, "넘음" 줄 없음, 종료 0, dry-run 끝 줄.
+#   (상한을 넘는 내용으로 둔다 — 깨진 바이트를 버리거나 바꿔 세고 넘음 줄을 내거나 조용히 넘어가면 잡힌다)
+test_dc_08_undecodable_core_cannot_count_notice() {
+  dc_setup
+  dc_core 15405 ascii
+  printf '\xff\xfe' >> "$DC_HARNESS/src/core.md"
+  if python3 -c 'import sys;open(sys.argv[1],encoding="utf-8").read()' "$DC_HARNESS/src/core.md" 2>/dev/null; then
+    fail dc08-fixture-decodable
+  fi
+  dc_run
+  dc_assert_not_blocked dc08
+  local want="[deploy] 알림: src/core.md 글자 수를 세지 못함"
+  [ "$(dc_notice_count "$DC_ALL")" = "1" ] || { dc_dbg; fail dc08-notice-once; }
+  [ "$(dc_notice_count "$DC_OUT")" = "1" ] || { dc_dbg; fail dc08-notice-stdout; }
+  dc_line_starts_with "$DC_OUT" "$want" || { echo "  [dbg] want-prefix=$want got=$(dc_notice_lines "$DC_ALL")"; fail dc08-notice-text; }
+  if printf '%s\n' "$DC_ALL" | grep -F -- "$DC_NOTICE_PREFIX" | grep -qF -- '넘음'; then
+    echo "  [dbg] got=$(dc_notice_lines "$DC_ALL")"; fail dc08-no-over-notice
+  fi
+}

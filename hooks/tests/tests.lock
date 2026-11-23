@@ -2,7 +2,7 @@ a482b885eb9f790650845f61a2873cecbd7da0e1415c68841f39f99c0bc022e1  baseline.manif
 f211184fe40bf182b2453af9fc525cf43388617c551186c7e0bb75509f49e112  cases/codex-scan.sh
 ae85ca635e1d2b20c36018a22c7edcbabcf30c5ebf4801fabc6adf5ba4b98225  cases/cwd-resolution.sh
 eae4c2439dfc91a5e72a7bf565e6b08de72f34d0b00ab6421679d187c4bff05e  cases/decision-reread.sh
-81f97c185625a4974d45a67ad3ce63121f7f8724925d78b85d0e42621c8a5748  cases/deploy-core-size.sh
+fb1a0620661f25255445203787eaada0c0cb6421af0a21ce5c7dee1f4d4e49b6  cases/deploy-core-size.sh
 dbb769f9ba80c4318fa9b4278328373249d990124dc18f87834a19d34791fe04  cases/detect-layer.sh
 e7182d053acbe1edb76e96824d0a21fb027c0c63d527598b1862091e866c9042  cases/gate-guard.sh
 b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guard.sh
@@ -70,6 +70,7 @@ d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legac
 # test: test_dc_05_hangul_one_over_counts_chars
 # test: test_dc_06_no_python3_cannot_count_notice
 # test: test_dc_07_notice_leaves_other_output_unchanged
+# test: test_dc_08_undecodable_core_cannot_count_notice
 # test: test_dl_broken_json
 # test: test_dl_cap_compress
 # test: test_dl_cc_line
