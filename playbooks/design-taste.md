@@ -1,8 +1,8 @@
 # playbook: 설계 품질·취향 (design-taste)
 
-> 트리거: `review.md §3` "설계 품질·취향" 렌즈를 적용할 때 + 설계·리팩토링 그룹핑 대화 시 + 새 파일 구조·이름 설계 시(§6). **렌즈 판단질문 본체는 review.md §3 단일 출처** — 이 문서는 그 렌즈가 끌어 쓰는 카탈로그(*무엇이* 좋은 설계인가)다.
+> 트리거: `review-lenses.md` §1 "설계 품질·취향" 렌즈를 적용할 때 + 설계·리팩토링 그룹핑 대화 시 + 새 파일 구조·이름 설계 시(§6). **렌즈 판단질문 본체는 `review-lenses.md` §1 단일 출처** — 이 문서는 그 렌즈가 끌어 쓰는 카탈로그(*무엇이* 좋은 설계인가)다.
 > 출처: `read-the-damn-code-study/TASTE.md`(8앵커·슬롭↔오버킬) + Evans DDD · Fowler Refactoring · Beck 단순설계.
-> 경계: 자원·속도(메서드 내부 렌즈)는 `review.md §4` 소유 — 여기서 중복하지 않는다. 이 문서는 **응집·경계·이름·냄새·취향**만.
+> 경계: 자원·속도(메서드 내부 렌즈)는 `review-lenses.md` §2 소유 — 여기서 중복하지 않는다. 이 문서는 **응집·경계·이름·냄새·취향**만.
 
 ## 1. 두 실패 방향 (둘 다 "커밋하지 않음"에서 온다)
 
@@ -32,7 +32,7 @@
 - **Primitive Obsession**: 의미를 raw 타입(String·int)으로 — Value Object.
 - **Data Clumps**: 늘 함께 다니는 파라미터 떼 — Parameter Object.
 - **Message Chain (Demeter 위반)**: `a.b().c().d()` 사슬 — 직접 의존만 노출.
-- **Duplicate / Shotgun Surgery**: 한 변경에 여러 곳을 손대야 함 — 단일 출처로.
+- **Duplicate / Shotgun Surgery**: 한 변경에 여러 곳을 손대야 함 — 단일 출처로(어디로 빼나 = `decisions/shared-code.md`).
 
 ## 4. DDD 핵심 (harness가 약한 곳 — 기술 트랜잭션 ≠ 도메인 경계)
 

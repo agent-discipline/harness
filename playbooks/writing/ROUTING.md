@@ -16,6 +16,7 @@
 | 쓰려는 문서 | 먼저 읽을 것 | 유형 문서 |
 |---|---|---|
 | 요구사항 명세서, 작업 log, NEXT, 측정 로그 | 해당 없음 | [work-records.md](work-records.md) |
+| 하네스의 규칙 문서(정의 = [rule-docs.md](rule-docs.md)) | [principles.md](principles.md) | [rule-docs.md](rule-docs.md) |
 | 학습 노트, 이슈 카드, 실험 기록, 독후감 | [principles.md](principles.md) | study-notes.md (작성 예정) |
 | 소스 코드 해설서 | [principles.md](principles.md) | walkthroughs.md (작성 예정) |
 | 유스케이스, ADR, 절차서, 아키텍처 뷰, 인수인계 문서 | [principles.md](principles.md) | design-docs.md (작성 예정) |

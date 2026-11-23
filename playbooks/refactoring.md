@@ -25,6 +25,7 @@
   - 계약 미검증(assert가 없거나 타입·존재만 보고 값을 안 봄),
   - exit 마스킹(`| tail`·`|| true`로 실패를 삼킴) 이 없나를 능동 반증한다.
 - 위장이 발견되면 baseline이 아니다 — 실계약을 검증하도록 고쳐 다시 green을 세운 뒤 진행.
+- 깐 특성테스트는 `testing.md` §2대로 지키는 동작을 구현하는 줄을 고장 내 실패를 본다 — 계약 미검증(값을 보지 않는 assert)을 실행으로 반증한다.
 
 ### ③ 그룹핑·경계 대화 (design-taste 연결)
 - 무엇을 어떻게 묶고 가를지 사용자와 대화한다 — `design-taste.md`의 8앵커·Fowler 코드냄새(Long Method·Feature Envy·Data Clumps 등)·DDD(용어 일관성·Bounded Context·Aggregate)를 판단 렌즈로.
