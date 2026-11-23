@@ -2,6 +2,7 @@
 
 Claude Code가 즉흥적으로 실행물을 만지지 않고, **인터뷰 → 명세서 합의 → 구현 → 검증 → 기록**을 거치도록 하는 설정 패키지.
 v4(2026-07-21)는 "덜어낼수록 남은 규칙이 더 잘 지켜진다(주의 희석)"를 근거로 v3를 슬림화한 버전이다: 구현 모드 5종 → **자율성 2택(auto/lazy) + 긴급 규칙 1줄**, 6칸 게이트+14차원 트리아지 → **전수 요구사항 인터뷰 → 명세서(SPEC 상태로 훅이 관측)**, 문서 4종 → **spec + log 2파일**, playbook 12→5. 실측 사고 유형(silent failure·상태 오인·날조·churn)에서 나온 방어선은 전부 존치했다(존치 매핑·리뷰 ledger: `docs/plans/2026-07-21/harness-v4-slimdown/`).
+구현할 때 덜 만드는 순서(core §4 — 정말 필요한가 → 이 코드베이스에서 찾는다 → 표준·플랫폼 → 설치된 의존성 → 최소 코드)와 그 세부(`playbooks/build-less.md`)는 Ponytail(DietrichGebert/ponytail, MIT)의 내용을 활용했다.
 
 ---
 
@@ -29,7 +30,7 @@ v4(2026-07-21)는 "덜어낼수록 남은 규칙이 더 잘 지켜진다(주의 
 
 ## 핵심 철학
 
-1. **상시 선독은 core 하나.** 세션마다 읽는 규칙은 `CLAUDE.md`(포인터) + `core.md`(≤150줄)뿐. 나머지는 트리거 시에만 읽는 조건부 문서다.
+1. **상시 선독은 core 하나.** 세션마다 읽는 규칙은 `CLAUDE.md`(포인터) + `core.md`(≤15,404자 — `wc -m`의 글자 수로 잰다, core §0.2)뿐. 나머지는 트리거 시에만 읽는 조건부 문서다.
 2. **L0/L1 상태 경계.** 경계는 발화 동사가 아니라 실행물 변경 여부. L1 진입은 **전수 인터뷰 → 명세서(필수 6칸, 빈 칸 금지) 사용자 합의 + 자율성 선택**을 요구하고, 이 합의는 훅 상태(SPEC)로 관측된다 — v3의 절차 선언을 상태 전이로 강화.
 3. **검증은 stakes 비례.** stakes(손실×낯섦×모호성×불가역 — "변경 크기" 아님)가 외부 검색·codex 교차 검증·워커 분리 강도를 정한다. 머지 전 안전선 6항·데이터 record-level 검증·그린 위장 점검·파괴적 조작 직전 상태 재확인은 stakes 무관 상시.
 4. **정책은 남기고 보상은 버린다.** 사용자 권한·책임 경계(승인 게이트·기준소스·금지영역)는 모델 무관 유지. 모델이 이미 잘하는 것의 재서술과 예측형 의무(14차원 전수 트리아지 — 날조 유발 실측)는 제거. 규칙 증감은 측정(`measurement-log`) 근거로만.
@@ -155,15 +156,19 @@ v4.8은 구현 주체를 core §5에 정했다. stakes 중간·높음의 L1(실�
 ├── playbooks/                 # 조건부 문서 (core §8 트리거 시에만)
 │   ├── review.md              #   中↑ 듀얼 리뷰 절차 — packet(diff+untracked 전문+spec+grep 원시) + 스캔 통과 read-only 미러(리뷰어 미러-only 탐색), codex 호출·보안 스캔 (단일 출처)
 │   ├── review-triage.md       #   리뷰 지적 가르기 — 기각 / 지금 고친다 / 후보 · 우선순위 S/A/B
-│   ├── review-reproduction.md #   지적의 재현과 영향 등급 — 코드 동작 지적은 리뷰한 코드에서 실행 재현(또는 정한 예외 · 잠재 판정) 뒤 채택 · 6등급 · 보고 규칙
+│   ├── review-lenses.md       #   리뷰 판단 렌즈 아홉(동시성 포함)과 렌즈마다 하네스 기록의 사례 · 자원·속도 체크리스트 (review.md 에서 옮김)
+│   ├── review-reproduction.md #   지적의 재현과 영향 등급 — 코드 동작 지적은 리뷰한 코드에서 실행 재현(또는 정한 예외 · 잠재 판정) 뒤 채택 · 6등급 · 필요도 세 등급 · 보고 규칙
 │   ├── task-units.md          #   작업을 task로 나누는 기준 · 명세의 task 여섯 칸과 분기 · task마다 구현·검증·커밋 · 진행 중 결정 · 커밋과 push의 허가 범위
 │   ├── refactoring.md         #   리팩토링 고정 순서 — 특성테스트 baseline green 선행 (JIT 절차 지식)
+│   ├── build-less.md          #   덜 만드는 순서의 세부 — 이 코드베이스에서 찾기 · 함께 바뀌어야 하는 곳 · 지우고 옮기고 합칠 때 · `단순화:` 주석
+│   ├── testing.md             #   테스트를 어디에 쓰나 · 지키는 줄을 고장 내 실패를 본다
+│   ├── reading-test.md        #   규칙 문서를 고친 뒤의 읽기 시험 — 바뀌어야 할 사례와 건드리면 안 되는 사례, 고치기 전 문서와의 비교
 │   ├── implementation-lazymode.md  # lazy: 매 diff 주관식 이해 게이트 + 판정 워커
 │   ├── open-source.md         #   외부 OSS 기여 절차
 │   ├── design-taste.md        #   설계 취향 카탈로그 (리뷰 렌즈·그룹핑 대화)
 │   ├── issue-archive.md       #   사이클 마감 — log의 CS 이슈를 study-note issue/로 추상화 아카이브(append-only·카드별 커밋)
 │   ├── decisions/             #   설계 선택 기준 — ROUTING.md(정하려는 것별로 읽을 문서, 줄의 형식(얻는 것·내주는 것·잴 것), 표에 없는 갈림을 만났을 때) · service-communication.md(서비스 간 통신 분기표) · messaging.md(메시징 방식 분기표) · 작성 중: client-communication.md(웹과 서버) · communication-reliability.md(중요도 등급과 장애 대응)
-│   └── writing/               #   글쓰기 규칙 — ROUTING.md(쓰려는 문서별로 읽을 문서) · principles.md(공통 원칙) · wording-table.md(낱말 사례 표) · work-records.md(작업 기록) · diagrams.md(그림)
+│   └── writing/               #   글쓰기 규칙 — ROUTING.md(쓰려는 문서별로 읽을 문서) · principles.md(공통 원칙) · wording-table.md(낱말 사례 표) · work-records.md(작업 기록) · diagrams.md(그림) · rule-docs.md(규칙 문서)
 ├── templates/
 │   ├── requirement-spec.md    #   ★ 진입 게이트 명세서 (필수 6칸 고정 — 빈 칸 금지 + 자율성 + load-bearing 가정)
 │   ├── log.md                 #   ★ 라이브 타임라인 + 리뷰 ledger + 생략한 검증(빚 정본) + 완료 요약
@@ -219,6 +224,7 @@ bash hooks/tests/run.sh          # 훅 테스트
 
 ## 이력
 
+- **v4.9 (2026-11-23)**: core §4 덜 만드는 순서(새 이름 — ②이 코드베이스에서 찾는다, ⑤새 의존성·새 기술은 전환 기준, ①뺀 것과 다시 더할 조건, `단순화:` 주석)와 세부 문서 `build-less.md` · `testing.md`(어디에 쓰나, 고장 내기) · `reading-test.md` · `writing/rule-docs.md` · 리뷰 렌즈를 `review-lenses.md`로 옮기고 동시성 렌즈를 더함 · 필요도 세 등급 · 인터뷰에서 묻는 것과 "기본으로 정한 것" · core 크기 기준을 글자 수(15,404자)로, 변경 이력을 `HISTORY.md`로 · 명세·log·NEXT 템플릿의 새 칸. 명세·근거: `docs/plans/2026-11-22/service-communication-http-default/` task 10
 - **v4.8 (2026-11-21)**: 구현 주체 — stakes 중간·높음의 L1(core §1 — 실행 정책 파일 포함)은 Opus 워커가 쓰고 메인은 낮은 stakes·긴급 수정·사용자 확인이 필요한 조작·lazy 모드의 작업만 직접 한다, 구현 워커 회수(테스트 설계·리뷰 반영 워커 포함 — 테스트 재실행과 건너뜀 계수·diff 범위 대조·동시 투입 뒤 마지막 상태 재확인), 리뷰 역할(리뷰어가 결함을 찾고 메인은 명세에 비추어 판정 — 메인은 리뷰어가 아님), 중간 테스트 설계 = 구현자와 다른 워커, 위임 목적 = 품질과 메인 컨텍스트 보호(core §0.2 한정·§4·§5) · gate-guard 가 메인의 직접 쓰기에 작업 폴더당 1회 알림(차단 아님). 근거: 위 "실측 — 구현 위임" 절 · 명세·리뷰: `docs/plans/2026-11-21/implementation-by-workers/`
 - **v4.3 (2026-11-06)**: 실측 반영 — core §0.5 예외·§1 L1에 `agents/` · 탐색 위임 `explorer`(Sonnet·읽기 전용, `agents/explorer.md` 배포, 목적 = 메인 컨텍스트 보호, 작은 조회는 메인 직접 — core §5), 이름 지침(core §4 1구 + `design-taste.md` §6 찾히는 이름), 측정 로그 13열 `워커`(모델×수·토큰 합). 근거: 위 "실측" 절(clean-code-llm-experiment 1~4차 결론) · 적용 기준·패치·리뷰: `docs/plans/2026-11-06/harness-v4-3/`
 - **v4.1 (2026-08-28)**: 실측 리서치(v4 이후 5주 — `docs/plans/2026-08-27/harness-usage-research/synthesis.md`) 기반 수정 — 상태·사이드카가 하위 cwd에 흩어져 PR에 혼입되던 유출 차단(git 워크트리 루트 폴백 + 자기무시 `.gitignore`), docs 가 git 루트인 repo 의 게이트 교착 해소, review packet 을 diff-only 에서 **untracked 전문 + 스캔 통과 read-only 미러(리뷰어 탐색 허용)** 로 재정의. 근거·리뷰 3루프: `docs/plans/2026-08-28/review-context-and-sidecar-fix/`
