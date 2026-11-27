@@ -438,21 +438,30 @@ test_rq_p25b_status_surrounding_spaces_are_ignored() { # 상태 칸의 앞뒤 �
 }
 
 # ── 리뷰 반영(task 03 리뷰 루프 1 — 실행으로 재현된 넷의 fix verification) ──────────────
-test_rq_p26_marker_inside_code_fence_is_not_a_marker() { # 펜스(```) 안의 표지 · 예시 표는 보지 않는다 — 진짜 표의 닫음 빈 칸을 판정
+rq_marker_line() { # <n> → 줄 전체(앞뒤 공백 · \r 무시)가 표지인 n 번째 행 번호(고정 자료 자체 확인)
+  local number
+  number=$(awk -v mark="$RQ_MARK" -v want="$1" '{ s = $0; sub(/\r$/, "", s); gsub(/^[ \t]+|[ \t]+$/, "", s); if (s == mark && ++n == want) { print NR; exit } }' "$RQ_LOG")
+  [ -n "$number" ] || { echo "  [dbg] fixture 에 표지 줄 $1 번째 없음"; fail fixture-marker-missing; }
+  printf '%s' "$number"
+}
+
+test_rq_p26_marker_line_inside_fence_counts_so_two_markers_are_undecidable() { # 펜스(```) 안 예시의 표지 줄도 센다 — 진짜 표지와 합쳐 둘이면 rc 1 · 까닭에 첫째 · 둘째 표지 행
   rq_log "$(rq_preamble)" \
     '표의 꼴 예시:' \
     '```text' "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T4 | 규약 §7.1 · 478행 | 예시-열림 | | 열림 |' '```' \
     '' \
     "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 진짜-닫음-빈칸 | | 닫음 |'
-  local line; line=$(rq_line '진짜-닫음-빈칸')
+  local first second; first=$(rq_marker_line 1); second=$(rq_marker_line 2)
   rq_scan "$RQ_LOG"
-  rq_assert_rc 0 p26-rc0
-  rq_assert_out "$(rq_violation T01 "$line")" p26-real-table-violation
+  rq_assert_rc 1 p26-rc1
+  rq_assert_one_line p26-one-line
+  rq_assert_has_number "$first" p26-reason-first-marker
+  rq_assert_has_number "$second" p26-reason-second-marker
 }
 
-test_rq_p26b_malformed_example_inside_tilde_fence_does_not_block() { # 펜스(~~~ · 들여씀) 안 예시가 틀린 꼴이어도 진짜 표가 맞으면 진짜 표로 판정(판정 불가 아님)
+test_rq_p26b_quoted_marker_inside_tilde_fence_is_not_a_marker() { # 펜스(~~~ · 들여씀) 안이어도 문장 안 인용은 표지가 아니다 — 틀린 꼴 예시가 있어도 진짜 표로 판정
   rq_log "$(rq_preamble)" \
-    '  ~~~' "$RQ_MARK" '| task | 상태 |' '|---|---|' '| T4 | 열림 |' '  ~~~  ' \
+    '  ~~~' "예: \`$RQ_MARK\` 다음 줄에 표" '| task | 상태 |' '|---|---|' '| T4 | 열림 |' '  ~~~  ' \
     '' \
     "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 진짜-열림-빈칸 | | 열림 |'
   rq_scan "$RQ_LOG"
@@ -498,42 +507,84 @@ test_rq_p29_header_then_eof_is_undecidable() { # 표지 + 머리 줄까지만 �
   rq_assert_one_line p29-one-line
 }
 
-# ── 닫히지 않은 코드 펜스(11-27 — 펜스 하나를 닫지 않으면 뒤의 진짜 표지가 펜스 안으로 읽혀 검사가 조용히 꺼지던 놓침) ──
-test_rq_p30_unclosed_fence_with_marker_inside_is_undecidable() { # 파일 끝까지 닫히지 않은 펜스 안에 표지 줄이 있으면 rc 1 · 까닭에 펜스를 연 행
+# ── 코드 펜스는 세지 않는다(11-27 사용자 결정 — 펜스를 세다 닫히지 않은 펜스 하나로 검사가 조용히 꺼지던 놓침을 없앤다) ──
+test_rq_p30_lone_marker_inside_unclosed_fence_is_judged() { # 닫히지 않은 펜스 안의 표지가 하나뿐이면 그 표지 뒤 첫 표를 판정한다(닫음 빈 칸 → VIOLATION)
   rq_log "$(rq_preamble)" \
     '예시를 열다 만 펜스:' \
     '```text' \
     '' \
     "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 펜스안-닫음-빈칸 | | 닫음 |'
-  local line; line=$(rq_line '```text')
+  local line; line=$(rq_line '펜스안-닫음-빈칸')
   rq_scan "$RQ_LOG"
-  rq_assert_rc 1 p30-rc1
-  rq_assert_one_line p30-one-line
-  rq_assert_has_text '닫히지 않은 코드 펜스' p30-reason-text
-  rq_assert_has_number "$line" p30-reason-fence-line
+  rq_assert_rc 0 p30-rc0
+  rq_assert_out "$(rq_violation T01 "$line")" p30-violation
 }
 
-test_rq_p30b_unclosed_fence_after_table_is_judged_normally() { # 표지 · 표가 펜스를 열기 전에 있으면 그대로 판정 · 표지가 아예 없으면 rc 2 그대로
-  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 펜스앞-닫음-빈칸 | | 닫음 |' \
-    '' \
-    '```' \
-    '닫지 않은 펜스 안의 글'
-  local line; line=$(rq_line '펜스앞-닫음-빈칸')
+test_rq_p30b_fences_around_a_single_marker_do_not_change_the_result() { # 표지가 하나면 펜스(``` · ~~~)가 앞 · 뒤 · 짝 안 맞게 있어도 펜스 없을 때와 같은 판정 · 표지 없으면 rc 2
+  # 펜스 없는 기준
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 기준-닫음-빈칸 | | 닫음 |' '| T01 | 규약 §2 | 기준-열림-빈칸 | | 열림 |'
+  local line; line=$(rq_line '기준-닫음-빈칸')
   rq_scan "$RQ_LOG"
-  rq_assert_rc 0 p30b-rc0
-  rq_assert_out "$(rq_violation T01 "$line")" p30b-violation
+  rq_assert_rc 0 p30b-plain-rc0
+  rq_assert_out "$(printf '%s\n%s' "$(rq_violation T01 "$line")" "$(rq_open T01 1 2)")" p30b-plain-judged
+  # 닫히지 않은 펜스 뒤 코드 블록 · 줄 앞 백틱 셋의 인라인 코드 · 펜스 안의 다른 펜스 줄 — 셋 모두 앞에, 표 뒤에 펜스 하나 더
+  rq_log "$(rq_preamble)" \
+    '```' '닫지 않은 펜스 안의 글' \
+    '```bash' 'echo 코드 블록' '```' \
+    '```인라인 코드``` 로 시작하는 줄' \
+    '~~~' '펜스 안의 다른 펜스 줄' '```' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 펜스뒤-닫음-빈칸 | | 닫음 |' '| T01 | 규약 §2 | 펜스뒤-열림-빈칸 | | 열림 |' \
+    '' \
+    '~~~' '표 뒤에 열다 만 펜스'
+  line=$(rq_line '펜스뒤-닫음-빈칸')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 0 p30b-fenced-rc0
+  rq_assert_out "$(printf '%s\n%s' "$(rq_violation T01 "$line")" "$(rq_open T01 1 2)")" p30b-fenced-same-as-plain
+  # 표지가 아예 없으면 펜스가 있어도 rc 2
   rq_log "$(rq_preamble)" '```' '닫지 않은 펜스 안의 글 — 표지 없음'
   rq_scan "$RQ_LOG"
   rq_assert_rc 2 p30b-nomarker-rc2
   rq_assert_empty p30b-nomarker-no-output
 }
 
-test_rq_p30c_closed_fence_marker_then_unclosed_fence_without_marker_is_not_checked() { # 닫힌 펜스 안의 표지는 닫힐 때 잊는다 — 뒤의 열린 펜스에 표지가 없으면 rc 2 · 출력 없음
+test_rq_p30c_lone_marker_inside_closed_fence_is_the_marker() { # 닫힌 펜스 안의 표지 줄이 하나뿐이면 그것이 표지다 — 뒤에 열다 만 펜스가 있어도 그 표를 판정
   rq_log "$(rq_preamble)" \
-    '```' "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 닫힌펜스-예시 | | 닫음 |' '```' \
+    '```' "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 닫힌펜스-닫음-빈칸 | | 닫음 |' '```' \
     '본문 글' \
     '~~~' '닫지 않은 펜스 안의 글 — 표지 없음'
+  local line; line=$(rq_line '닫힌펜스-닫음-빈칸')
   rq_scan "$RQ_LOG"
-  rq_assert_rc 2 p30c-rc2
-  rq_assert_empty p30c-no-output
+  rq_assert_rc 0 p30c-rc0
+  rq_assert_out "$(rq_violation T01 "$line")" p30c-violation
+}
+
+# ── 표지 줄은 하나(11-27 사용자 결정 — 줄 전체가 표지인 줄이 둘 이상이면 판정 불가) ──
+test_rq_p31_three_marker_lines_are_undecidable_with_first_two_lines() { # 표지 줄 셋 → rc 1 · 한 줄 · 까닭에 첫째 · 둘째 표지 행
+  rq_log "$(rq_preamble)" \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 첫째표 | hooks/a.sh:1 | 닫음 |' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T02 | 규약 §2 | 둘째표 | hooks/a.sh:2 | 닫음 |' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T03 | 규약 §3 | 셋째표 | hooks/a.sh:3 | 닫음 |'
+  local first second; first=$(rq_marker_line 1); second=$(rq_marker_line 2)
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p31-rc1
+  rq_assert_one_line p31-one-line
+  rq_assert_has_number "$first" p31-reason-first-marker
+  rq_assert_has_number "$second" p31-reason-second-marker
+}
+
+test_rq_p31b_marker_with_leading_spaces_and_cr_counts_as_second_marker() { # 표지 줄 둘 중 하나가 앞 공백 · 끝 \r 을 가져도 둘로 센다 → rc 1 · 두 행
+  rq_log "$(rq_preamble)" \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 요구-가 | hooks/a.sh:1 | 닫음 |' \
+    '' \
+    "   $RQ_MARK"$'\r' "$RQ_HEAD" "$RQ_SEP" '| T02 | 규약 §2 | 요구-나 | hooks/a.sh:2 | 닫음 |'
+  grep -q $'\r$' "$RQ_LOG" || fail p31b-fixture-cr
+  local first second; first=$(rq_marker_line 1); second=$(rq_marker_line 2)
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p31b-rc1
+  rq_assert_one_line p31b-one-line
+  rq_assert_has_number "$first" p31b-reason-first-marker
+  rq_assert_has_number "$second" p31b-reason-second-marker
 }
