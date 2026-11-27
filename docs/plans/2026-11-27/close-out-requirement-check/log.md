@@ -64,6 +64,7 @@
 | 19:1x | 인증이 끊겨(사용자 로그인 변경) blind 테스트 워커가 도중에 멈춤 → 메인이 확인: 테스트 파일 문법 통과 · 43개 · 끝까지 쓰여 있음 · 그 워커의 run.sh 둘은 이미 끝남(남은 실행 0). lock 을 메인이 다시 만들고 커밋 `01c139a`(테스트 — 구현 전) | 깨끗한 작업 트리(`wt/harness-base` 를 `01c139a` 로 detached)에서 red: **473 통과 · 6 실패 · 0 건너뜀** — 실패 6 = 새 계약 테스트(p26 · p30 · p30b · p30c · p31 · p31b) |
 | 11-27 19:17 | 구현 워커(Opus 105k) 회수 → 커밋 `2b6fb33` | state-lib +19/−21(펜스 코드 7줄 지움 · 표지 줄 수 · `die` 가 끝까지 읽게) · 템플릿 두 구절 · 워커의 고장 내기 2(둘째 표지 무시 → p26 · p31 · p31b 실패 / `die` 가 exit → 잡는 테스트 없음 → 같은 워커가 p31c 를 더함 · 그 고장에서 p31c 실패) · lock 480. 메인 재실행(깨끗한 작업 트리) · 루프 3(좁게 · Opus 실행 ∥ codex) 시작. lock 을 다시 만든 사유 = 이 행 |
 | 11-27 19:22 | t03 루프 3(좁게): Opus(실행 · 89k — mawk · gawk 5.3.2 에서 44/44) ∥ codex — **둘 다 지적 없음** · 메인 재실행(깨끗한 작업 트리 `2b6fb33`) **480 통과 · 0 실패 · 0 건너뜀** | **task 03 닫음**. 후보 하나(BOM · NBSP 표지). task 04 blind 테스트 워커 시작 — 계약을 처음부터 넉넉히(흔한 꼴 · 놓침과 막힘 양쪽). **진행 중 결정**: 사이드카에 **쓰는** 일(task-mode-guard)은 task 05 로 옮김(task-mode-guard 를 고치는 일을 한 task 에) — task 04 는 읽는 쪽(`state_reqcheck_paths` · gate-guard · reinject) |
+| 11-27 19:30 | task 04 blind 테스트 워커(Opus 179k) 회수 → 커밋 `6e6b70c` | 새 `hooks/tests/cases/req-check-gate.sh` 48개(A paths 12 · B gate 25 · C reinject 11) · legacy 사본 `fixtures/legacy-d42c6a9/`(gate-guard · reinject · state-lib — 지금 훅과 cmp 같음) · lock 528(사유 = 이 행). 워커 사본에서 8 통과(종전과 같다 · 막지 않는다) · 40 실패(함수 · 동작 없음). 워커의 해석 여덟 받음(DEBT=1 은 stdout JSON 만 단언 · reinject 위반은 모은 한 줄 · 위반 줄이 앞 등). 메인 red 재실행(깨끗한 작업 트리) · 구현 워커 시작 |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
