@@ -68,6 +68,8 @@
 | 19:4x | task 04 red(깨끗한 작업 트리 `6e6b70c`) | **488 통과 · 40 실패 · 0 건너뜀** — 실패 40 모두 `test_rg_` |
 | 11-27 19:41 | task 04 구현 워커(Opus 192k) 회수 → 커밋 `38c2d23` | 세 파일 +127(state-lib: paths · findings(공용 — 두 훅이 어긋나지 않게 · 브리프에 없던 것) · gate-guard: req_check_gate · reinject 단락). 워커 사본 528/0/0 · 고장 일곱 잡힘 · 지연 L1 Write 한 번 약 +18~40ms(243 대 225ms). **메인 고장 내기**: 저장소 밖 사본(`…/scratchpad/break-t04`)에서 gate-guard.sh:391 의 `VIOLATION)` 갈래를 `VIOLATIONX)` 로(cmp 391행) → 워커(agent_id) 의 L1 Write 가 원본 exit 2(요구 대조 메시지 · T01 · 6행 · 푸는 길) → 고장 사본 exit 0 — b01 · b03 이 지키는 규칙. 메인 전체 재실행(깨끗한 작업 트리) · 리뷰 루프 1(Opus 실행 ∥ codex) 시작 |
 | 11-27 20:02 | 메인 재실행(깨끗한 작업 트리 `38c2d23`) **528 통과 · 0 실패 · 0 건너뜀** · t04 루프 1: Opus(실행 · 185k — 놓침 9가지 · 오탐 · 종전 바이트 비교 10 시나리오 · 겹친 상태 · 지연 · 고장 9개 모두 잡힘) ∥ codex — 둘이 같은 지적 둘 | 채택 둘(t04-1 사이드카 손상의 푸는 길 · t04-2 DEBT 의 stderr 한 줄). 지연: gate-guard 한 번 약 +5~45ms · findings 한 번 3~43ms(폴더 다섯 40줄씩). 겹친 상태(DEBT=1 + PENDING=1 / 미독)는 exit 2 에 stdout JSON — 막는 판정은 그대로라 결함 아님(알림은 다음 쓰기에) |
+| 20:1x | t04 리뷰 반영 워커(Opus 87k+) 회수 → 커밋 `1257b33` | gate-guard 하나(+ 테스트 b26 · b27 · lock 530). **메인 재실행(깨끗한 작업 트리) 530 통과 · 0 실패 · 0 건너뜀**. **메인 고장 내기**: 사본(`…/scratchpad/break-t04`)에서 gate-guard.sh:409 의 DEBT stderr `echo` 를 `: echo` 로(cmp 409행) → DEBT=1 · 위반 1건의 L1 Write: 원본 stderr "요구 대조 — 긴급(DEBT=1)이라 막지 않는다: 닫음 빈 칸 1건 …" / 고장 사본 stderr 없음 — b27 이 지키는 규칙 |
+| 11-27 20:23 | t04 루프 2(좁게): Opus(실행 · 79k) — 지적 없음 ∥ codex — 지적 1(jq 실패 시 stderr 두 줄 — 기각) | **task 04 닫음**. 메인 세션의 게이트가 다른 작업 폴더로 리셋됨(상태파일 읽기: SPEC=0 · MODE=UNSET · TASK_PATH=study-note 의 study-site-import) — task 05 의 워커가 저장소 안 L1 파일을 Edit/Write 하면 gate-guard 가 막는다. 우회하지 않고 메인에 보고 |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -105,6 +107,7 @@
 
 - review packet: t01 루프 1 — base `77ba594` / 리뷰한 SHA `0b87e2d` / `$OUT` = `…/scratchpad/rv/t01-l1` / 미러 = 같은 폴더 `mirror/`
 - review packet: t01 루프 2 — base `77ba594` / 리뷰한 SHA `1a5db40` / `$OUT` = `…/scratchpad/rv/t01-l2`
+- review packet: t04 루프 2(좁게) — base `38c2d23` / 리뷰한 SHA `1257b33` / `$OUT` = `…/scratchpad/rv/t04-l2`
 - review packet: t04 루프 1 — base `6e6b70c` / 리뷰한 SHA `38c2d23` / `$OUT` = `…/scratchpad/rv/t04-l1`
 - review packet: t03 루프 3(좁게) — base `69dce52` / 리뷰한 SHA `2b6fb33` / `$OUT` = `…/scratchpad/rv/t03-l3`
 - review packet: t03 루프 2(좁게) — base `a5a8c2c` / 리뷰한 SHA `69dce52` / `$OUT` = `…/scratchpad/rv/t03-l2`
@@ -153,8 +156,9 @@
 | t03-6 | 03 | 2 | opus | hooks/state-lib.sh:436,438 — 줄 앞 백틱 셋으로 시작하는 인라인 코드(```` ```rm -rf``` ````)를 펜스로 셈 → 짝이 뒤집혀 조용히 꺼지거나(rc 2) 오탐(rc 1) | 실행 — rvcase/C.md · E.md rc=2 · D.md rc=1 | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
 | t03-7 | 03 | 2 | codex | hooks/state-lib.sh:436-439,458-460 — 열린 ```` ```text ```` 안의 ```` ```sh ```` 를 닫는 줄로 보아 표지 기록을 지움 → rc 2 | 코드로만 확인(같은 원인 — t03-5) | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
 | t03-8 | 03 | 3 | opus | (참고) 파일 머리 BOM · NBSP 가 붙은 표지 줄은 표지로 안 봐 rc 2 | 미실행 — 후보 | 검증 | 있으면 좋다 | 후보 — (2) 경로는 있으나 트리거가 현실에 드묾(log 는 Claude 의 Write · Edit · 셸이 쓰고 BOM 을 붙이지 않는다) → NEXT | closed | |
-| t04-1 | 04 | 1 | opus · codex | hooks/gate-guard.sh:399 · state-lib.sh:484,505-507 — 사이드카가 손상되면 모든 L1 쓰기가 막히는데 푸는 길이 "표를 고친다" 하나뿐(사이드카는 상태 디렉토리 — 모델이 Edit/Write/Bash 로 고칠 수 없다) | 잠재 — `38c2d23` · probe/p5.sh(심링크 · 상대 경로 줄 · 디렉토리 → exit 2 · 안내가 틀림) | 가용성 | 반드시 필요 | 채택 — (4) 명세 6.1 ③ "오탐일 때 푸는 길" · 손상은 task 05 의 쓰는 쪽 결함이나 손으로만 닿지만 닿으면 세션 전체가 멈춤 | open | |
-| t04-2 | 04 | 1 | opus · codex | hooks/gate-guard.sh:400-406 · spec 6.1 ② — DEBT=1 일 때 stderr 한 줄이 없음(명세는 stderr 한 줄 + additionalContext) | 실행 — probe/p1.sh h · i2 stderr 0바이트 | 계약 | 하면 좋다 | 채택 — (4) 명세와 다름 · 한 줄이라 코드를 명세에 맞춘다 | open | |
+| t04-1 | 04 | 1 | opus · codex | hooks/gate-guard.sh:399 · state-lib.sh:484,505-507 — 사이드카가 손상되면 모든 L1 쓰기가 막히는데 푸는 길이 "표를 고친다" 하나뿐(사이드카는 상태 디렉토리 — 모델이 Edit/Write/Bash 로 고칠 수 없다) | 잠재 — `38c2d23` · probe/p5.sh(심링크 · 상대 경로 줄 · 디렉토리 → exit 2 · 안내가 틀림) | 가용성 | 반드시 필요 | 채택 — (4) 명세 6.1 ③ "오탐일 때 푸는 길" · 손상은 task 05 의 쓰는 쪽 결함이나 손으로만 닿지만 닿으면 세션 전체가 멈춤 | fixed | 1 |
+| t04-2 | 04 | 1 | opus · codex | hooks/gate-guard.sh:400-406 · spec 6.1 ② — DEBT=1 일 때 stderr 한 줄이 없음(명세는 stderr 한 줄 + additionalContext) | 실행 — probe/p1.sh h · i2 stderr 0바이트 | 계약 | 하면 좋다 | 채택 — (4) 명세와 다름 · 한 줄이라 코드를 명세에 맞춘다 | fixed | 1 |
+| t04-3 | 04 | 2 | codex | hooks/gate-guard.sh:409,413 — DEBT=1 에서 jq 가 실패하면 stderr 가 두 줄(요약 줄 + 실패 경고) | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — 명세의 "stderr 한 줄"은 정상 경로의 알림이고, 둘째 줄은 jq 실패를 드러내는 경고(core §4 "실패를 드러내기") — 읽는 사람의 행동이 달라지지 않는다 | closed | |
 | t02-3 | 02 | 2 | opus(L2-1) | README.md:179 · settings.json — 저장소의 `settings.json` 사본에 detect-layer 등록이 없다(여덟) | 미실행 — 후보: 원래 있던 것 | 문서 | 하면 좋다 | 후보 — (3) 이번 변경 전부터 있던 것 · 이미 후보(`docs/plans/2026-11-20/review-triage/replay.md:13` · NEXT N8) | closed | |
 | t02-4 | 02 | 2 | opus(L2-2) | README.md:188 — 옮기면서 detect-layer 사이드카가 세션별(`<sid>.events`)이라는 말이 빠짐 | 코드로만 확인 — ① 문서 | 문서 | 있으면 좋다 | 채택 — (4) 옮김 대조(옮긴 뒤 위치가 빈 것 0) | fixed | 2 |
 | t02-c1 | 02 | 1 | codex(D1) · opus(2) | src/core.md:111 · hooks/deploy.sh:18 — README 는 배포되지 않아 다른 프로젝트 세션에서 가리킴이 풀리지 않음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 사용자가 이 옮김을 골랐다(분기 Q4) · core 는 이미 README 를 가리킨다(§0.2 "세는 법 = README" · §5 "README '실측' 절") — 같은 설계. 훅 목록은 모델이 따를 행동이 아니라 색인이고 행동 규칙은 core §1 · §6 · §7 에 남음 | closed | |
@@ -163,6 +167,7 @@
 - verified — t02 루프 3(신규 채택 0 · 두 리뷰어 모두 지적 없음): 네이밍 / README.md:179 ↔ hooks/*.sh / 훅 이름 아홉을 파일명과 대조 / opus · codex · 완전성 / packet-diff.md:77 → README.md:180-190 · src/core.md:111 → README.md:150,179 / 옮김 대조 빈 칸 0 · 가리킴 이어짐 / opus · codex · 통합 / hooks/deploy.sh:6,18,179 ↔ README.md:179,222 / 등록 위치 · 배포 제외 서술이 맞음 / opus · codex · 설계 품질 / src/core.md:111 / 단일 출처 / opus · codex · 과잉 구현 / src/core.md:111 / 줄이 짧아짐 / opus. 비적용(API · 메서드 · 쿼리 · 동시성 — 문서). 비대칭 없음 → **t02 리뷰 종료**.
 - verified — t01 루프 6(신규 채택 0 · 두 리뷰어 모두 지적 없음): API 단위 / templates/log.md:25-26 · task-units.md:45 · core.md:75 / 표가 조용히 무시되는 경로(둘째 표 · 표 밖 줄 · 표지 리터럴) · 꼴이 틀리면 막힘 · 긴급은 알림 / opus · codex · 메서드 내부(절차 흐름) / task-units.md:40,45,52,53 / 검증 앞 대조 → 재확인 → 메운 diff 재검증 / opus · codex · 네이밍 / templates/log.md:26,28-29,32 ↔ spec 6.1 ① / 표지 · 머리 줄 · 상태 값 · `T01` / opus · codex · 완전성 / task-units.md:26,45,53 · requirement-spec.md:98 / 넘김 · 다시 열기 · 워커 대조 · 기각 조건 · 마감 / opus · codex · 통합 / templates/log.md:5,25 · work-records.md:37 · task-units.md:45,61 · core.md:75,115 / 앞서는 쪽이 문장에 있음 / opus · codex · 설계 품질 / templates/log.md:24 · task-units §3 / 단일 출처 / opus · codex · 과잉 구현 / templates/log.md:24 / 되풀이 없음 / opus · codex. 비적용(쿼리 · 동시성 — 문서). 비대칭 없음 → **t01 리뷰 종료**(루프 6 — 사용자의 답대로 3 을 넘겨 계속함).
 - verified — t03 루프 3(신규 채택 0 · 두 리뷰어 지적 없음): 메서드 내부 / hooks/state-lib.sh:430-466 / 펜스 코드 없음(grep) · 표지 줄 수를 모든 줄에서 셈 · END 에서 표지 둘 이상이 꼴 틀림보다 앞섬 / opus(실행) · codex · 이식성 / mawk · mawk C · gawk 5.3.2(docker) · gawk C 에서 test_rq_ 44/44 / opus · 문서 / templates/log.md 두 구절 ↔ 구현 / opus · codex. → **t03 리뷰 종료**.
+- verified — t04 루프 2(신규 채택 0): 고친 두 곳 / hooks/gate-guard.sh:389,400-401,409 / 사이드카 경로가 findings 의 where 와 글자 그대로 같음 · 고장 두 방향(늘 참 · 늘 거짓) 모두 b26 이 잡음 · DEBT stderr 한 줄을 지우거나 수를 고정하면 b27 이 잡음 · 찾은 것이 없으면 출력 종전과 같음(c11) / opus(실행 — 사본 run.sh 530/0/0) · codex. → **t04 리뷰 종료**.
 
 ## 생략한 검증
 
