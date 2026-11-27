@@ -378,26 +378,35 @@ reread_gate() {
 #   PreToolUse L1 쓰기만 — 여기 닿은 것은 L0(log.md 자체 포함) · 상태파일 · 고정 지시 · SPEC · MODE 판정을 이미 통과했다.
 #   메인 · 워커 구분 없음(내용 판정). 부르는 자리 = auto(reread_gate 앞) · lazy Pre(PENDING 판정 앞).
 #   위반(닫음 + 넷째 칸 빈 칸) 또는 판정 불가(C2 ② — 꼴 틀림 · 읽기 불가 · 사이드카 손상) → exit 2 + stderr(task · 행 · 경로 ·
-#   까닭 · 푸는 길 · 머리 줄 까닭이면 기대 머리 줄). DEBT=1(긴급) → 막지 않고 stdout 에 additionalContext JSON 한 덩어리
+#   까닭 · 푸는 길 · 머리 줄 까닭이면 기대 머리 줄 · 사이드카 판정 불가면 사용자에게 요청). DEBT=1(긴급) → 막지 않고 stderr 한 줄
+#   (위반 · 판정 불가 수 · 생략한 검증) + stdout 에 additionalContext JSON 한 덩어리
 #   (통과하며 낸 일반 출력은 모델에게 안 보인다 — worker_notice 와 같은 까닭. worker_notice 는 DEBT=1 에서 내지 않으니 겹치지
 #   않는다). 찾은 것이 없으면(표지 없음 · 열린 빈 칸뿐) 아무것도 내지 않고 return 0 — 종전 흐름 · 출력 바이트 그대로.
 #   검사를 끄는 환경 변수 · 플래그는 두지 않는다(자가 우회 금지 — 명세 6.1 ③). 오탐이면 표를 고친다(log.md 는 L0).
 req_check_gate() {
-  local findings kind where rest report="" howto context
+  local findings kind where rest report="" howto context sidecar violations=0 undecidables=0
   [ "$EVENT" = "PreToolUse" ] || return 0
+  sidecar="$(dirname -- "$STATE")/$SESSION_ID.req-check-paths"   # state_reqcheck_paths 와 같은 이름
   findings=$(state_reqcheck_findings "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)")
   while IFS=$'\t' read -r kind where rest; do
     case "$kind" in
       VIOLATION)   # rest = <task>\t<행> — 행은 수라 마지막 탭에서 가른다
+        violations=$((violations + 1))
         report+="  ${rest%$'\t'*} — $where ${rest##*$'\t'}행: 상태가 닫음인데 '만든 곳 / 넘긴 곳'이 빈 칸"$'\n' ;;
       UNDECIDABLE)
+        undecidables=$((undecidables + 1))
         report+="  판정 불가 — $where: $rest"$'\n'
+        # 사이드카는 상태 디렉토리에 있어 모델이 Edit · Write(상태파일 거부) · Bash 로 고칠 수 없다 — 사용자에게 넘긴다.
+        [ "$where" != "$sidecar" ] \
+          || report+="    이 파일은 상태 디렉토리의 사이드카라 모델이 고칠 수 없다 — 사용자에게 이 파일($where)을 지우거나 고쳐 달라고 요청한다(줄마다 작업 폴더의 절대 경로 하나)."$'\n'
         case "$rest" in *'머리 줄'*) report+="    기대하는 머리 줄(글자 그대로): $REQCHECK_HEADER"$'\n' ;; esac ;;
     esac
   done <<< "$findings"
   [ -n "$report" ] || return 0
-  howto="그 줄의 '만든 곳 / 넘긴 곳'을 채우거나(file:line · 커밋 · 넘기면 받는 task 와 합의 시각), 아직 닫지 않았으면 상태를 '열림'으로 되돌린다. 판정 불가면 표를 templates/log.md 의 '요구 대조' 절 꼴로 고친다. log.md 쓰기는 막히지 않는다(L0). (core §4 · task-units.md §3)"
+  howto="그 줄의 '만든 곳 / 넘긴 곳'을 채우거나(file:line · 커밋 · 넘기면 받는 task 와 합의 시각), 아직 닫지 않았으면 상태를 '열림'으로 되돌린다. 판정 불가면 표를 templates/log.md 의 '요구 대조' 절 꼴로 고친다(사이드카 판정 불가는 위 줄대로 사용자에게). log.md 쓰기는 막히지 않는다(L0). (core §4 · task-units.md §3)"
   if [ "$(state_get "$STATE" DEBT)" = "1" ]; then
+    # 명세 6.1 ② — 막지 않고 stderr 한 줄 + additionalContext(stderr 는 통과 시 모델에게 안 보인다 — 사람 · 기록용).
+    echo "[gate-guard] 요구 대조 — 긴급(DEBT=1)이라 막지 않는다: 닫음 빈 칸 ${violations}건 · 판정 불가 ${undecidables}건 — 작업 폴더 log.md 의 '생략한 검증'에 빚으로 적는다." >&2
     # 알림 JSON 을 먼저 만든다 — 생성이 실패하면 stdout 없이 경고 한 줄(통과 — 긴급은 막지 않는다).
     context=$(jq -cn --arg context "[gate-guard] 요구 대조 — 긴급(DEBT=1)이라 막지 않는다:"$'\n'"${report}이 빈 칸 · 판정 불가는 작업 폴더 log.md 의 '생략한 검증'에 빚으로 적고, 해소 전에는 task 를 닫지 않는다. 푸는 길: $howto" \
       '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$context}}' 2>/dev/null) && [ -n "$context" ] \

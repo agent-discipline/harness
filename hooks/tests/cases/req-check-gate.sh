@@ -757,3 +757,52 @@ test_rg_c11_no_findings_output_same_as_legacy() { # [C] 위반 · 열린 빈 칸
     rg_same_as_legacy reinject-mode.sh "$name"
   done
 }
+
+# ── 리뷰 반영(task 04 리뷰 루프 1) — fix verification ─────────────────────────────
+# 사이드카는 상태 디렉토리에 있어 모델이 Edit · Write(상태파일 거부) · Bash 로 고칠 수 없다 → 푸는 길에 "사용자에게 요청"이 있어야 한다.
+RG_SIDECAR_USER_HINT='모델이 고칠 수 없다'
+test_rg_b26_broken_sidecar_howto_asks_user_to_fix_it() { # [B] 사이드카 판정 불가(심링크 · 디렉토리 · 상대 경로 줄) → 푸는 길에 "모델이 고칠 수 없다 · 사용자에게 요청" + 경로 · DEBT=1 JSON 도 · log 판정 불가엔 없음
+  local f1 f2 kind; f1=$(rg_folder f1); f2=$(rg_folder f2)
+  rg_log_no_marker "$f1"; rg_state auto 0 0 1 "$f1"
+  for kind in symlink directory relative; do
+    rm -rf -- "$(rg_sidecar_path)"
+    case "$kind" in
+      symlink)   printf '%s\n' "$f2" > "$SANDBOX/real-paths"; ln -s "$SANDBOX/real-paths" "$(rg_sidecar_path)" ;;
+      directory) mkdir -p -- "$(rg_sidecar_path)" ;;
+      relative)  rg_sidecar "$f2" 'docs/plans/2026-11-27/f3' ;;
+    esac
+    rg_l1 Write
+    rg_assert_exit 2 "b26-$kind-exit2"
+    rg_err_has "$RG_SIDECAR_USER_HINT" "b26-$kind-model-cannot"
+    rg_err_has '사용자에게' "b26-$kind-ask-user"
+    rg_err_has "$(rg_sidecar_path)" "b26-$kind-path"
+  done
+  rg_state auto 0 1 1 "$f1"
+  rg_l1 Write
+  rg_assert_exit 0 b26-debt-exit0
+  rg_assert_single_context_json b26-debt
+  rg_context_has "$RG_SIDECAR_USER_HINT" b26-debt-model-cannot
+  rg_context_has '사용자에게' b26-debt-ask-user
+  rm -rf -- "$(rg_sidecar_path)"
+  rg_log_bad_header "$f1"; rg_state auto 0 0 1 "$f1"
+  rg_l1 Write
+  rg_assert_exit 2 b26-log-undecidable-exit2
+  rg_err_lacks "$RG_SIDECAR_USER_HINT" b26-log-undecidable-no-sidecar-hint
+}
+
+test_rg_b27_debt_writes_one_stderr_line_with_violation_count() { # [B] DEBT=1 · 위반 둘 → stderr 한 줄(요구 대조 · 긴급 · 막지 않음 · 위반 수 2 · 생략한 검증) · stdout 은 JSON 한 덩어리 그대로
+  local f1; f1=$(rg_folder f1)
+  rg_log_table "$f1" 0 \
+    '| T01 | 규약 §1 | 요구-가 | | 닫음 |' \
+    '| T02 | 규약 §2 | 요구-나 | | 닫음 |'
+  rg_state auto 0 1 1 "$f1"
+  rg_l1 Write
+  rg_assert_exit 0 b27-exit0
+  rg_assert_single_context_json b27
+  [ "$(rg_count_lines "$HOOK_STDERR")" = 1 ] || { rg_dbg; fail b27-one-stderr-line; }
+  rg_err_has '요구 대조' b27-word
+  rg_err_has '긴급' b27-emergency
+  rg_err_has '막지 않는다' b27-not-blocked
+  rg_err_has '생략한 검증' b27-debt-word
+  rg_err_has_number 2 b27-count
+}
