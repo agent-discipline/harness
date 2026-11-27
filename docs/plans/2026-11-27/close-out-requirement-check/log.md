@@ -42,6 +42,8 @@
 | 11-27 16:30 | 루프 4: t01 Opus(127k — 지적 2) ∥ codex(지적 1) | 채택 둘(16 · 17) · 기각 하나(18). 채택 수 6 → 5 → 2 → 2 로 줄어듦 · 같은 결함의 되풀이 아님. 반영 워커 시작 → 루프 5 |
 | 11-27 16:31 | 루프 4 반영 워커(Opus 65k) 회수 → 커밋 `065edb3` | task-units 80줄 |
 | 11-27 16:35 | 루프 5: t01 Opus(116k — 지적 2) ∥ codex(지적 없음) | 채택 둘(19 · 20). 19 는 차례의 설계 결함(대조가 검증 뒤) — 같은 결함의 되풀이가 아니라 새 지적. 채택 수 6 → 5 → 2 → 2 → 2. 반영 워커 시작 → 루프 6 |
+| 11-27 16:35 | 루프 5 반영 워커(Opus 70k) 회수 → 커밋 `b693e1d` | task-units 80줄 · 그림 · 트리거 · 요구 대조 줄이 같은 차례(요구 옮기기 → 구현 → 커밋 → 요구 대조 → 검증 → … → 대조 재확인(닫음)) |
+| 11-27 16:39 | 루프 6: t01 Opus(109k) ∥ codex — **둘 다 지적 없음** | **task 01 리뷰 종료**. 지적 수(채택): 6 · 5 · 2 · 2 · 2 · 0. 읽기 시험: 고치기 전 판(`wt/harness-base`) 워커(Opus 73k) 끝 · 고친 판 워커 시작 |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -73,6 +75,7 @@
 
 - review packet: t01 루프 1 — base `77ba594` / 리뷰한 SHA `0b87e2d` / `$OUT` = `…/scratchpad/rv/t01-l1` / 미러 = 같은 폴더 `mirror/`
 - review packet: t01 루프 2 — base `77ba594` / 리뷰한 SHA `1a5db40` / `$OUT` = `…/scratchpad/rv/t01-l2`
+- review packet: t01 루프 6 — base `77ba594` / 리뷰한 SHA `b693e1d` / `$OUT` = `…/scratchpad/rv/t01-l6`
 - review packet: t01 루프 5 — base `77ba594` / 리뷰한 SHA `065edb3` / `$OUT` = `…/scratchpad/rv/t01-l5`
 - review packet: t01 루프 4 — base `77ba594` / 리뷰한 SHA `8c4739c` / `$OUT` = `…/scratchpad/rv/t01-l4`
 - review packet: t01 루프 3 — base `77ba594` / 리뷰한 SHA `498cd64` / `$OUT` = `…/scratchpad/rv/t01-l3`
@@ -100,14 +103,15 @@
 | t01-16 | 01 | 4 | opus | task-units.md:45 · templates/log.md:32 — "옮긴 줄 수"를 표 줄로 세면 원문 한 줄을 빠뜨리고 다른 줄을 나눠도 `7 / 7` | 코드로만 확인 — ① 문서 | 검증 | 반드시 필요 | 채택 — (4) 사고 4번(잘린 읽기)을 드러내려고 둔 수가 아무것도 잡지 못함 | fixed | 4 |
 | t01-17 | 01 | 4 | opus | task-units.md:45 — 명세가 배정하지 않은 다른 task 로 옮기기를 묻는지 세 문장이 다르게 읽힘 | 코드로만 확인 — ① 문서 | 검증 | 하면 좋다 | 채택 — (3) 루프 3 고침과 어긋남 · core §1(검증 강도를 낮추는 것은 묻는다) | fixed | 4 |
 | t01-18 | 01 | 4 | codex | task-units.md:45 · spec 2절 — 명세 ② 의 작업 전체 불변식이 task 의 표에 옮겨지지 않을 수 있음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 작업 전체의 불변식은 이미 다른 겹이 본다: task-units §3 마지막 확인("작업 전체의 목표와 불변식이 지켜졌는가") · 명세 ② 의 "불변식 → 지키는 테스트" 표(testing.md §1). 요구 대조는 task 의 요구(9절 칸 · 계약 문서)를 맡는다 | closed | |
-| t01-19 | 01 | 5 | opus | task-units.md:40,45 · core.md:75 — 요구 대조가 검증 뒤라 닫을 때 메운 구현이 그 task 의 강도로 검증되지 않고 닫힌다(:50 · :53 에는 "고친 곳만 다시 확인"이 있는데 여기엔 없음) | 코드로만 확인 — ① 문서 | 검증 | 반드시 필요 | 채택 — (4) 이 방어선이 막으려던 경우(빠진 요구)에서 바로 검증이 빠짐 | open | |
-| t01-20 | 01 | 5 | opus | task-units.md:45 · templates/log.md:32 — "원문의 줄 수"(분모)의 정의가 없음 | 코드로만 확인 — ① 문서 | 검증 | 하면 좋다 | 채택 — (3) 루프 4 고침(분자만 정함)의 빈틈 | open | |
+| t01-19 | 01 | 5 | opus | task-units.md:40,45 · core.md:75 — 요구 대조가 검증 뒤라 닫을 때 메운 구현이 그 task 의 강도로 검증되지 않고 닫힌다(:50 · :53 에는 "고친 곳만 다시 확인"이 있는데 여기엔 없음) | 코드로만 확인 — ① 문서 | 검증 | 반드시 필요 | 채택 — (4) 이 방어선이 막으려던 경우(빠진 요구)에서 바로 검증이 빠짐 | fixed | 5 |
+| t01-20 | 01 | 5 | opus | task-units.md:45 · templates/log.md:32 — "원문의 줄 수"(분모)의 정의가 없음 | 코드로만 확인 — ① 문서 | 검증 | 하면 좋다 | 채택 — (3) 루프 4 고침(분자만 정함)의 빈틈 | fixed | 5 |
 | t02-3 | 02 | 2 | opus(L2-1) | README.md:179 · settings.json — 저장소의 `settings.json` 사본에 detect-layer 등록이 없다(여덟) | 미실행 — 후보: 원래 있던 것 | 문서 | 하면 좋다 | 후보 — (3) 이번 변경 전부터 있던 것 · 이미 후보(`docs/plans/2026-11-20/review-triage/replay.md:13` · NEXT N8) | closed | |
 | t02-4 | 02 | 2 | opus(L2-2) | README.md:188 — 옮기면서 detect-layer 사이드카가 세션별(`<sid>.events`)이라는 말이 빠짐 | 코드로만 확인 — ① 문서 | 문서 | 있으면 좋다 | 채택 — (4) 옮김 대조(옮긴 뒤 위치가 빈 것 0) | fixed | 2 |
 | t02-c1 | 02 | 1 | codex(D1) · opus(2) | src/core.md:111 · hooks/deploy.sh:18 — README 는 배포되지 않아 다른 프로젝트 세션에서 가리킴이 풀리지 않음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 사용자가 이 옮김을 골랐다(분기 Q4) · core 는 이미 README 를 가리킨다(§0.2 "세는 법 = README" · §5 "README '실측' 절") — 같은 설계. 훅 목록은 모델이 따를 행동이 아니라 색인이고 행동 규칙은 core §1 · §6 · §7 에 남음 | closed | |
 | t02-c2 | 02 | 1 | codex(D2) · opus(1) | README.md:179-192 · src/core.md:111 — README 의 `hooks/` 트리에는 라이브러리 · CLI · 배포 · 테스트도 같이 있어 "활성 훅"의 구분이 사라짐 | 코드로만 확인 — ① 문서 | 문서 | 하면 좋다 | 채택 — (4) 옮김 대조(명세 2절 — 옮긴 뒤 위치가 빈 것 0)에서 "활성"이라는 구분이 옮겨지지 않음 | fixed | 1 |
 
 - verified — t02 루프 3(신규 채택 0 · 두 리뷰어 모두 지적 없음): 네이밍 / README.md:179 ↔ hooks/*.sh / 훅 이름 아홉을 파일명과 대조 / opus · codex · 완전성 / packet-diff.md:77 → README.md:180-190 · src/core.md:111 → README.md:150,179 / 옮김 대조 빈 칸 0 · 가리킴 이어짐 / opus · codex · 통합 / hooks/deploy.sh:6,18,179 ↔ README.md:179,222 / 등록 위치 · 배포 제외 서술이 맞음 / opus · codex · 설계 품질 / src/core.md:111 / 단일 출처 / opus · codex · 과잉 구현 / src/core.md:111 / 줄이 짧아짐 / opus. 비적용(API · 메서드 · 쿼리 · 동시성 — 문서). 비대칭 없음 → **t02 리뷰 종료**.
+- verified — t01 루프 6(신규 채택 0 · 두 리뷰어 모두 지적 없음): API 단위 / templates/log.md:25-26 · task-units.md:45 · core.md:75 / 표가 조용히 무시되는 경로(둘째 표 · 표 밖 줄 · 표지 리터럴) · 꼴이 틀리면 막힘 · 긴급은 알림 / opus · codex · 메서드 내부(절차 흐름) / task-units.md:40,45,52,53 / 검증 앞 대조 → 재확인 → 메운 diff 재검증 / opus · codex · 네이밍 / templates/log.md:26,28-29,32 ↔ spec 6.1 ① / 표지 · 머리 줄 · 상태 값 · `T01` / opus · codex · 완전성 / task-units.md:26,45,53 · requirement-spec.md:98 / 넘김 · 다시 열기 · 워커 대조 · 기각 조건 · 마감 / opus · codex · 통합 / templates/log.md:5,25 · work-records.md:37 · task-units.md:45,61 · core.md:75,115 / 앞서는 쪽이 문장에 있음 / opus · codex · 설계 품질 / templates/log.md:24 · task-units §3 / 단일 출처 / opus · codex · 과잉 구현 / templates/log.md:24 / 되풀이 없음 / opus · codex. 비적용(쿼리 · 동시성 — 문서). 비대칭 없음 → **t01 리뷰 종료**(루프 6 — 사용자의 답대로 3 을 넘겨 계속함).
 
 ## 생략한 검증
 
