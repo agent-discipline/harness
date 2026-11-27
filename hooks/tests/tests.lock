@@ -7,7 +7,7 @@ dbb769f9ba80c4318fa9b4278328373249d990124dc18f87834a19d34791fe04  cases/detect-l
 e7182d053acbe1edb76e96824d0a21fb027c0c63d527598b1862091e866c9042  cases/gate-guard.sh
 b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guard.sh
 e2f784d96758c2257ef81e4d524d9e0412808385e99305095a269e9d9dcc0585  cases/misc-guards.sh
-5a513f528ae746cb4455c22e0d5a9a0841e2eaf55567e2a3eb1a94e49fc59d93  cases/req-check.sh
+17dc86de68143f7ffe980e11cdbaa2531986d489bbf3c5eaf1d89f932ccc4ec0  cases/req-check.sh
 4a8d45155c4c337e8dca574a8e6b3230188b627fc9664c04e34956624f1c1b1e  cases/sidecar-docsroot.sh
 90897bfb9e7914f528fb039a2d6a31d2263a7e03faa0498dd8fbb25bbd4c52a3  cases/state-schema.sh
 743be2a1d315b3d1d75ca0c75d1ccbbb8e4e34cefcd5816c6929794375628444  cases/worker-notice.sh
@@ -363,6 +363,11 @@ d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legac
 # test: test_rq_p24_escaped_pipe_in_fourth_cell_is_filled
 # test: test_rq_p25_bold_status_is_undecidable
 # test: test_rq_p25b_status_surrounding_spaces_are_ignored
+# test: test_rq_p26_marker_inside_code_fence_is_not_a_marker
+# test: test_rq_p26b_malformed_example_inside_tilde_fence_does_not_block
+# test: test_rq_p27_separator_cells_need_a_dash
+# test: test_rq_p28_row_without_leading_pipe_right_after_table_is_undecidable
+# test: test_rq_p29_header_then_eof_is_undecidable
 # test: test_sd_01
 # test: test_sd_02
 # test: test_sd_03

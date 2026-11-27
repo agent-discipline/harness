@@ -436,3 +436,64 @@ test_rq_p25b_status_surrounding_spaces_are_ignored() { # 상태 칸의 앞뒤 �
   rq_assert_rc 0 p25b-rc0
   rq_assert_out "$(rq_violation T01 "$line")" p25b-violation
 }
+
+# ── 리뷰 반영(task 03 리뷰 루프 1 — 실행으로 재현된 넷의 fix verification) ──────────────
+test_rq_p26_marker_inside_code_fence_is_not_a_marker() { # 펜스(```) 안의 표지 · 예시 표는 보지 않는다 — 진짜 표의 닫음 빈 칸을 판정
+  rq_log "$(rq_preamble)" \
+    '표의 꼴 예시:' \
+    '```text' "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T4 | 규약 §7.1 · 478행 | 예시-열림 | | 열림 |' '```' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 진짜-닫음-빈칸 | | 닫음 |'
+  local line; line=$(rq_line '진짜-닫음-빈칸')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 0 p26-rc0
+  rq_assert_out "$(rq_violation T01 "$line")" p26-real-table-violation
+}
+
+test_rq_p26b_malformed_example_inside_tilde_fence_does_not_block() { # 펜스(~~~ · 들여씀) 안 예시가 틀린 꼴이어도 진짜 표가 맞으면 진짜 표로 판정(판정 불가 아님)
+  rq_log "$(rq_preamble)" \
+    '  ~~~' "$RQ_MARK" '| task | 상태 |' '|---|---|' '| T4 | 열림 |' '  ~~~  ' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 진짜-열림-빈칸 | | 열림 |'
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 0 p26b-rc0
+  rq_assert_out "$(rq_open T01 1 1)" p26b-real-table-open
+}
+
+test_rq_p27_separator_cells_need_a_dash() { # 구분 줄의 칸마다 - 가 하나 이상 — 공백뿐인 칸은 판정 불가(행 번호), : 정렬 표기는 받는다
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" '|   |   |   |   |   |' '| T01 | 규약 §1 | 요구-가 | | 닫음 |'
+  local line; line=$(rq_line '|   |   |   |   |   |')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p27-spaces-rc1
+  rq_assert_one_line p27-spaces-one-line
+  rq_assert_has_number "$line" p27-spaces-reason-line
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" '|:---|---:|:-:| - |-|' '| T01 | 규약 §1 | 요구-닫음-빈칸 | | 닫음 |'
+  line=$(rq_line '요구-닫음-빈칸')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 0 p27-aligned-rc0
+  rq_assert_out "$(rq_violation T01 "$line")" p27-aligned-violation
+}
+
+test_rq_p28_row_without_leading_pipe_right_after_table_is_undecidable() { # 표의 줄 바로 다음(빈 줄 없이) | 를 담았지만 | 로 시작하지 않는 줄 → rc 1 · 행 번호
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" 'T01 | 규약 §1 | 앞파이프없음-구분줄뒤 | | 닫음 |'
+  local line; line=$(rq_line '앞파이프없음-구분줄뒤')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p28-after-sep-rc1
+  rq_assert_one_line p28-after-sep-one-line
+  rq_assert_has_number "$line" p28-after-sep-reason-line
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" \
+    '| T01 | 규약 §1 | 요구-가 | hooks/a.sh:1 | 닫음 |' \
+    'T01 | 규약 §2 | 앞파이프없음-본문뒤 | | 닫음 |'
+  line=$(rq_line '앞파이프없음-본문뒤')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p28-after-row-rc1
+  rq_assert_one_line p28-after-row-one-line
+  rq_assert_has_number "$line" p28-after-row-reason-line
+}
+
+test_rq_p29_header_then_eof_is_undecidable() { # 표지 + 머리 줄까지만 있고 파일 끝(구분 줄 없음) → rc 1
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD"
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p29-rc1
+  rq_assert_one_line p29-one-line
+}
