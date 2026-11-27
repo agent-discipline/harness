@@ -67,6 +67,7 @@
 | 11-27 19:30 | task 04 blind 테스트 워커(Opus 179k) 회수 → 커밋 `6e6b70c` | 새 `hooks/tests/cases/req-check-gate.sh` 48개(A paths 12 · B gate 25 · C reinject 11) · legacy 사본 `fixtures/legacy-d42c6a9/`(gate-guard · reinject · state-lib — 지금 훅과 cmp 같음) · lock 528(사유 = 이 행). 워커 사본에서 8 통과(종전과 같다 · 막지 않는다) · 40 실패(함수 · 동작 없음). 워커의 해석 여덟 받음(DEBT=1 은 stdout JSON 만 단언 · reinject 위반은 모은 한 줄 · 위반 줄이 앞 등). 메인 red 재실행(깨끗한 작업 트리) · 구현 워커 시작 |
 | 19:4x | task 04 red(깨끗한 작업 트리 `6e6b70c`) | **488 통과 · 40 실패 · 0 건너뜀** — 실패 40 모두 `test_rg_` |
 | 11-27 19:41 | task 04 구현 워커(Opus 192k) 회수 → 커밋 `38c2d23` | 세 파일 +127(state-lib: paths · findings(공용 — 두 훅이 어긋나지 않게 · 브리프에 없던 것) · gate-guard: req_check_gate · reinject 단락). 워커 사본 528/0/0 · 고장 일곱 잡힘 · 지연 L1 Write 한 번 약 +18~40ms(243 대 225ms). **메인 고장 내기**: 저장소 밖 사본(`…/scratchpad/break-t04`)에서 gate-guard.sh:391 의 `VIOLATION)` 갈래를 `VIOLATIONX)` 로(cmp 391행) → 워커(agent_id) 의 L1 Write 가 원본 exit 2(요구 대조 메시지 · T01 · 6행 · 푸는 길) → 고장 사본 exit 0 — b01 · b03 이 지키는 규칙. 메인 전체 재실행(깨끗한 작업 트리) · 리뷰 루프 1(Opus 실행 ∥ codex) 시작 |
+| 11-27 20:02 | 메인 재실행(깨끗한 작업 트리 `38c2d23`) **528 통과 · 0 실패 · 0 건너뜀** · t04 루프 1: Opus(실행 · 185k — 놓침 9가지 · 오탐 · 종전 바이트 비교 10 시나리오 · 겹친 상태 · 지연 · 고장 9개 모두 잡힘) ∥ codex — 둘이 같은 지적 둘 | 채택 둘(t04-1 사이드카 손상의 푸는 길 · t04-2 DEBT 의 stderr 한 줄). 지연: gate-guard 한 번 약 +5~45ms · findings 한 번 3~43ms(폴더 다섯 40줄씩). 겹친 상태(DEBT=1 + PENDING=1 / 미독)는 exit 2 에 stdout JSON — 막는 판정은 그대로라 결함 아님(알림은 다음 쓰기에) |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -104,6 +105,7 @@
 
 - review packet: t01 루프 1 — base `77ba594` / 리뷰한 SHA `0b87e2d` / `$OUT` = `…/scratchpad/rv/t01-l1` / 미러 = 같은 폴더 `mirror/`
 - review packet: t01 루프 2 — base `77ba594` / 리뷰한 SHA `1a5db40` / `$OUT` = `…/scratchpad/rv/t01-l2`
+- review packet: t04 루프 1 — base `6e6b70c` / 리뷰한 SHA `38c2d23` / `$OUT` = `…/scratchpad/rv/t04-l1`
 - review packet: t03 루프 3(좁게) — base `69dce52` / 리뷰한 SHA `2b6fb33` / `$OUT` = `…/scratchpad/rv/t03-l3`
 - review packet: t03 루프 2(좁게) — base `a5a8c2c` / 리뷰한 SHA `69dce52` / `$OUT` = `…/scratchpad/rv/t03-l2`
 - review packet: t03 루프 1 — base `f6101f3` / 리뷰한 SHA `a5a8c2c` / `$OUT` = `…/scratchpad/rv/t03-l1`
@@ -151,6 +153,8 @@
 | t03-6 | 03 | 2 | opus | hooks/state-lib.sh:436,438 — 줄 앞 백틱 셋으로 시작하는 인라인 코드(```` ```rm -rf``` ````)를 펜스로 셈 → 짝이 뒤집혀 조용히 꺼지거나(rc 2) 오탐(rc 1) | 실행 — rvcase/C.md · E.md rc=2 · D.md rc=1 | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
 | t03-7 | 03 | 2 | codex | hooks/state-lib.sh:436-439,458-460 — 열린 ```` ```text ```` 안의 ```` ```sh ```` 를 닫는 줄로 보아 표지 기록을 지움 → rc 2 | 코드로만 확인(같은 원인 — t03-5) | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
 | t03-8 | 03 | 3 | opus | (참고) 파일 머리 BOM · NBSP 가 붙은 표지 줄은 표지로 안 봐 rc 2 | 미실행 — 후보 | 검증 | 있으면 좋다 | 후보 — (2) 경로는 있으나 트리거가 현실에 드묾(log 는 Claude 의 Write · Edit · 셸이 쓰고 BOM 을 붙이지 않는다) → NEXT | closed | |
+| t04-1 | 04 | 1 | opus · codex | hooks/gate-guard.sh:399 · state-lib.sh:484,505-507 — 사이드카가 손상되면 모든 L1 쓰기가 막히는데 푸는 길이 "표를 고친다" 하나뿐(사이드카는 상태 디렉토리 — 모델이 Edit/Write/Bash 로 고칠 수 없다) | 잠재 — `38c2d23` · probe/p5.sh(심링크 · 상대 경로 줄 · 디렉토리 → exit 2 · 안내가 틀림) | 가용성 | 반드시 필요 | 채택 — (4) 명세 6.1 ③ "오탐일 때 푸는 길" · 손상은 task 05 의 쓰는 쪽 결함이나 손으로만 닿지만 닿으면 세션 전체가 멈춤 | open | |
+| t04-2 | 04 | 1 | opus · codex | hooks/gate-guard.sh:400-406 · spec 6.1 ② — DEBT=1 일 때 stderr 한 줄이 없음(명세는 stderr 한 줄 + additionalContext) | 실행 — probe/p1.sh h · i2 stderr 0바이트 | 계약 | 하면 좋다 | 채택 — (4) 명세와 다름 · 한 줄이라 코드를 명세에 맞춘다 | open | |
 | t02-3 | 02 | 2 | opus(L2-1) | README.md:179 · settings.json — 저장소의 `settings.json` 사본에 detect-layer 등록이 없다(여덟) | 미실행 — 후보: 원래 있던 것 | 문서 | 하면 좋다 | 후보 — (3) 이번 변경 전부터 있던 것 · 이미 후보(`docs/plans/2026-11-20/review-triage/replay.md:13` · NEXT N8) | closed | |
 | t02-4 | 02 | 2 | opus(L2-2) | README.md:188 — 옮기면서 detect-layer 사이드카가 세션별(`<sid>.events`)이라는 말이 빠짐 | 코드로만 확인 — ① 문서 | 문서 | 있으면 좋다 | 채택 — (4) 옮김 대조(옮긴 뒤 위치가 빈 것 0) | fixed | 2 |
 | t02-c1 | 02 | 1 | codex(D1) · opus(2) | src/core.md:111 · hooks/deploy.sh:18 — README 는 배포되지 않아 다른 프로젝트 세션에서 가리킴이 풀리지 않음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 사용자가 이 옮김을 골랐다(분기 Q4) · core 는 이미 README 를 가리킨다(§0.2 "세는 법 = README" · §5 "README '실측' 절") — 같은 설계. 훅 목록은 모델이 따를 행동이 아니라 색인이고 행동 규칙은 core §1 · §6 · §7 에 남음 | closed | |
