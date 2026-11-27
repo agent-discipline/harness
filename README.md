@@ -185,7 +185,7 @@ v4.8은 구현 주체를 core §5에 정했다. stakes 중간·높음의 L1(실�
 │   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT)·압축 뒤 미독·고정 지시(~/.claude/standing-instructions.md) 재주입
 │   ├── git-guard.sh           #   push 네이티브 승인(ask) 위임 + 커밋/gh 발행 attribution 하드 차단
 │   ├── codex-scan.sh          #   codex 호출 명령의 시크릿 backstop
-│   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(.events — InstructionsLoaded·ConfigChange·SubagentStop)
+│   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(세션별 `<sid>.events` — InstructionsLoaded·ConfigChange·SubagentStop)
 │   ├── capture-decision.sh    #   선택 질문(AskUserQuestion)의 질문·선택지·답 → 작업 폴더 decisions.md (작업 폴더 전에는 .decisions 사이드카에 쌓았다 옮김)
 │   ├── reread-track.sh        #   작업 기록(spec·log·decisions.md) Read 시각 → .reread 사이드카 (압축 뒤 재독 판정)
 │   ├── deploy.sh              #   manifest diff → 백업+원자 교체 → stale 최상위 파일 정리 → smoke (실패 시 D9 자동 복원)
