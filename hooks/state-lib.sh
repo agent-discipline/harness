@@ -405,3 +405,56 @@ state_standing_print() {
       end
   ' 2>/dev/null || true
 }
+
+# ── v4.10 요구 대조 (close-out-requirement-check — 표의 꼴 정본 = templates/log.md "요구 대조" 절) ─────────
+# 표지 줄 다음의 첫 표 하나만 읽는다. log.md 는 **끝까지** 읽는다(줄 · 크기 상한 없음 — 절단이 이 방어선을 낳은 사고의 원인).
+#   줄마다 앞뒤 공백(줄 끝 \r 포함)을 무시하고 본다: 표지 줄 · 머리 줄은 글자 그대로, 표지와 머리 줄 사이 빈 줄은 건너뛴다,
+#   표의 줄 = `|` 로 시작하는 줄(들여씀 무관) — 그 밖의 줄(빈 줄 포함)에서 표가 끝난다. 칸은 다섯, 칸 안의 `\|` 는 경계가 아니다.
+#   상태 ∈ {열림, 닫음}(칸의 앞뒤 공백만 무시). 빈 칸 = 비었거나 공백뿐이거나 `-` · `—` · `?` 하나뿐.
+#   stdout(rc 0): `VIOLATION\t<task>\t<행>`(닫음 + 넷째 칸 빈 칸, 파일 차례) 다음 `OPEN\t<task>\t<빈 칸 수>\t<그 task 의 줄 수>`
+#     (열림 빈 칸이 있는 task 만, 처음 나온 차례).
+#   rc 1 = 판정 불가(심링크 · 비정규 · 읽기 불가 · 꼴 틀림 · 표지 뒤에 표 없음) — stdout = 까닭 한 줄(행 번호가 있으면 함께).
+#   rc 2 = 표지 없음 · 파일 없음(검사 대상 아님) — 출력 없음. 표지 판정도 awk 가 줄 전체로 한다(인용 · 백틱 안의 글자는 표지가 아니다).
+#   awk 는 바이트로 비교한다 — 로캘(C 포함)과 mawk · gawk 에 관계없이 같은 결과. exit 뒤에도 END 가 돈다(POSIX).
+REQCHECK_MARKER='<!-- req-check:v1 -->'
+REQCHECK_HEADER='| task | 원문 위치 | 요구 | 만든 곳 / 넘긴 곳 | 상태 |'
+state_reqcheck_scan() { # <log.md> → rc 0 / 1 / 2
+  local f="${1:-}" out rc=0
+  [ -n "$f" ] || return 2
+  if [ ! -e "$f" ] && [ ! -L "$f" ]; then return 2; fi
+  { [ -f "$f" ] && [ ! -L "$f" ] && [ -r "$f" ]; } \
+    || { printf '%s\n' "log.md 를 읽을 수 없음(심링크 · 정규 파일 아님 · 권한): $f"; return 1; }
+  # awk 종료 코드: 0 판정함 · 1 판정 불가(까닭 출력) · 3 표지 없음 · 그 밖 = 읽기 실패(판정 불가).
+  out=$(_RQ_M="$REQCHECK_MARKER" _RQ_H="$REQCHECK_HEADER" awk '
+    function trim(s) { sub(/^[ \t\r]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
+    function blank(s) { s = trim(s); return (s == "" || s == "-" || s == "—" || s == "?") }
+    function die(m)  { print m " (" NR "행)"; bad = 1; exit }
+    st == 0 { if (trim($0) == ENVIRON["_RQ_M"]) st = 1; next }
+    st == 1 { line = trim($0); if (line == "") next
+              if (line != ENVIRON["_RQ_H"]) die("요구 대조 표의 머리 줄이 꼴과 다름"); st = 2; next }
+    st == 2 { if (trim($0) !~ /^\|[ :-]+\|[ :-]+\|[ :-]+\|[ :-]+\|[ :-]+\|$/) die("요구 대조 표의 구분 줄이 꼴과 다름"); st = 3; next }
+    st == 3 { line = trim($0); if (substr(line, 1, 1) != "|") { st = 4; next }
+              gsub(/\\\|/, "\001", line)                     # 칸 안의 \| 는 경계가 아니다
+              if (length(line) < 2 || substr(line, length(line)) != "|") die("요구 대조 표의 줄이 | 로 끝나지 않음")
+              n = split(substr(line, 2, length(line) - 2), c, "|")
+              if (n != 5) die("요구 대조 표의 칸 수가 5가 아님: " n)
+              t = trim(c[1]); s = trim(c[5])
+              if (t == "") die("요구 대조 표의 task 칸이 빔")
+              if (s != "열림" && s != "닫음") die("요구 대조 표의 상태가 열림 · 닫음이 아님: " s)
+              if (!(t in total)) order[++k] = t
+              total[t]++
+              if (blank(c[4])) { if (s == "닫음") viol[++v] = t "\t" NR; else open_n[t]++ }
+              next }
+    END { if (bad) exit 1
+          if (st == 0) exit 3
+          if (st < 3) { print "요구 대조 표지 뒤에 표가 없음"; exit 1 }
+          for (i = 1; i <= v; i++) print "VIOLATION\t" viol[i]
+          for (i = 1; i <= k; i++) if (open_n[order[i]] > 0) print "OPEN\t" order[i] "\t" open_n[order[i]] "\t" total[order[i]] }
+  ' "$f" 2>/dev/null) || rc=$?
+  case "$rc" in
+    0) [ -z "$out" ] || printf '%s\n' "$out"; return 0 ;;
+    1) printf '%s\n' "${out:-요구 대조 표 판정 불가: $f}"; return 1 ;;
+    3) return 2 ;;
+    *) printf '%s\n' "log.md 읽기 실패(awk rc $rc): $f"; return 1 ;;
+  esac
+}
