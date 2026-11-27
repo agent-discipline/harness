@@ -497,3 +497,43 @@ test_rq_p29_header_then_eof_is_undecidable() { # 표지 + 머리 줄까지만 �
   rq_assert_rc 1 p29-rc1
   rq_assert_one_line p29-one-line
 }
+
+# ── 닫히지 않은 코드 펜스(11-27 — 펜스 하나를 닫지 않으면 뒤의 진짜 표지가 펜스 안으로 읽혀 검사가 조용히 꺼지던 놓침) ──
+test_rq_p30_unclosed_fence_with_marker_inside_is_undecidable() { # 파일 끝까지 닫히지 않은 펜스 안에 표지 줄이 있으면 rc 1 · 까닭에 펜스를 연 행
+  rq_log "$(rq_preamble)" \
+    '예시를 열다 만 펜스:' \
+    '```text' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 펜스안-닫음-빈칸 | | 닫음 |'
+  local line; line=$(rq_line '```text')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p30-rc1
+  rq_assert_one_line p30-one-line
+  rq_assert_has_text '닫히지 않은 코드 펜스' p30-reason-text
+  rq_assert_has_number "$line" p30-reason-fence-line
+}
+
+test_rq_p30b_unclosed_fence_after_table_is_judged_normally() { # 표지 · 표가 펜스를 열기 전에 있으면 그대로 판정 · 표지가 아예 없으면 rc 2 그대로
+  rq_log "$(rq_preamble)" "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 펜스앞-닫음-빈칸 | | 닫음 |' \
+    '' \
+    '```' \
+    '닫지 않은 펜스 안의 글'
+  local line; line=$(rq_line '펜스앞-닫음-빈칸')
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 0 p30b-rc0
+  rq_assert_out "$(rq_violation T01 "$line")" p30b-violation
+  rq_log "$(rq_preamble)" '```' '닫지 않은 펜스 안의 글 — 표지 없음'
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 2 p30b-nomarker-rc2
+  rq_assert_empty p30b-nomarker-no-output
+}
+
+test_rq_p30c_closed_fence_marker_then_unclosed_fence_without_marker_is_not_checked() { # 닫힌 펜스 안의 표지는 닫힐 때 잊는다 — 뒤의 열린 펜스에 표지가 없으면 rc 2 · 출력 없음
+  rq_log "$(rq_preamble)" \
+    '```' "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T01 | 규약 §1 | 닫힌펜스-예시 | | 닫음 |' '```' \
+    '본문 글' \
+    '~~~' '닫지 않은 펜스 안의 글 — 표지 없음'
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 2 p30c-rc2
+  rq_assert_empty p30c-no-output
+}
