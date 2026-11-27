@@ -49,17 +49,17 @@
 - (Q8 (가)) task-mode-guard: `agent_id` 가 있는(비어 있지 않은 문자열) Write 는 상태를 바꾸지 않는다. 없거나 빈 값 · null 이면 종전대로(gate-guard `reread_gate` 와 같은 기준).
 - 규칙 문서: `src/core.md` ≤ 15,404자(README 세는 법) · 조건부 문서 ≤ 80줄 · 옮긴 문장의 대조표(`rule-docs.md` 규칙 6)에서 옮긴 뒤 위치가 빈 것 0 · 단일 출처(표의 꼴 = log 템플릿, 쓰는 법 = `task-units.md` §3, 훅이 보는 것 · 못 보는 것 = README).
 - 가로지르는 계약: log 템플릿의 표 머리 줄(글자 그대로) ↔ state-lib 파서의 머리 줄 상수 ↔ 테스트 고정 자료 ↔ `task-units.md` §3 의 상태 값(`열림` · `닫음`) ↔ core §4 의 줄 ↔ README 의 훅 설명 · 한계. 하나를 바꾸면 넷을 함께.
-- 불변식 → 지키는 테스트(테스트 이름 = 규칙 문장 · 6.3 의 사례 목록이 정본):
+- 불변식 → 지키는 테스트(실제 이름 — 한글 이름은 `run.sh` 의 이름 검사 `test_[a-z0-9_]+` 에 걸러져 영문으로 · 11-28 task 06 에서 고침):
 
 | 불변식 | 지키는 테스트 |
 |---|---|
-| 닫음 줄의 빈 칸은 L1 쓰기를 막는다 | `test_닫음_줄의_만든_곳이_비면_L1_쓰기를_막는다` |
-| 표를 고치는 쓰기는 막지 않는다 | `test_닫음_빈칸이_있어도_log_md_쓰기는_통과한다` |
-| 표지가 없으면 검사하지 않는다 | `test_표지가_없는_log는_검사하지_않고_출력도_같다` |
-| 판정 불가는 막는다 | `test_표지는_있는데_머리_줄이_다르면_막는다` |
-| 끝까지 읽는다 | `test_200KB_log의_끝에_있는_표도_읽는다` |
-| 열림 빈 칸은 알린다 | `test_열림_빈칸은_매_턴_한_줄로_알린다` |
-| 워커의 Write 는 리셋하지 않는다 | `test_agent_id가_있는_log_Write는_게이트를_리셋하지_않는다` |
+| 닫음 줄의 빈 칸은 L1 쓰기를 막는다 | `test_rq_p04_closed_row_with_blank_is_violation_with_file_line` · `test_rg_b01_closed_blank_in_task_path_log_blocks_l1_write` |
+| 표를 고치는 쓰기는 막지 않는다 | `test_rg_b22_writing_log_md_itself_passes_with_violation` |
+| 표지가 없으면 검사하지 않는다 | `test_rq_p01_log_without_marker_is_not_checked` · `test_rg_b19_no_marked_log_output_same_as_legacy` |
+| 판정 불가는 막는다 | `test_rq_p07_header_mismatch_is_undecidable_with_line` · `test_rq_p31_three_marker_lines_are_undecidable_with_first_two_lines` |
+| 끝까지 읽는다 | `test_rq_p11_table_after_200kb_is_still_read` |
+| 열림 빈 칸은 알린다 | `test_rg_c02_open_blanks_one_line_task_blank_over_rows_across_folders` |
+| 워커의 Write 는 리셋하지 않는다 | `test_rw_a01_worker_write_of_new_log_md_keeps_state_bytes` |
 
 ## 3. 기준소스 (필수)
 
