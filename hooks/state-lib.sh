@@ -414,9 +414,12 @@ state_standing_print() {
 #   상태 ∈ {열림, 닫음}(칸의 앞뒤 공백만 무시). 빈 칸 = 비었거나 공백뿐이거나 `-` · `—` · `?` 하나뿐.
 #   stdout(rc 0): `VIOLATION\t<task>\t<행>`(닫음 + 넷째 칸 빈 칸, 파일 차례) 다음 `OPEN\t<task>\t<빈 칸 수>\t<그 task 의 줄 수>`
 #     (열림 빈 칸이 있는 task 만, 처음 나온 차례).
-#   rc 1 = 판정 불가(심링크 · 비정규 · 읽기 불가 · 꼴 틀림 · 표지 뒤에 표 없음 · 닫히지 않은 펜스 안의 표지 줄) — stdout = 까닭 한 줄(행 번호가 있으면 함께).
-#   rc 2 = 표지 없음 · 파일 없음(검사 대상 아님) — 출력 없음. 표지 판정도 awk 가 줄 전체로 한다(인용 · 백틱 · 코드 펜스 안의 글자는 표지가 아니다).
-#   awk 는 바이트로 비교한다 — 로캘(C 포함)과 mawk · gawk 에 관계없이 같은 결과. exit 뒤에도 END 가 돈다(POSIX).
+#   표지 줄 = 줄 전체(앞뒤 공백 · 탭 · \r 무시)가 표지인 줄 — 문장 안 인용(백틱 · `>`)은 표지가 아니다. 코드 펜스는 세지 않는다
+#   (펜스 짝 세기가 검사를 조용히 끄는 길을 냈다). 표지 줄이 둘 이상이면 판정 불가 — 그래서 꼴이 틀려도 파일 끝까지 센다.
+#   rc 1 = 판정 불가(심링크 · 비정규 · 읽기 불가 · 표지 줄 둘 이상 · 꼴 틀림 · 표지 뒤에 표 없음) — stdout = 까닭 한 줄
+#     (행 번호가 있으면 함께 — 표지 줄 둘 이상이면 첫째 · 둘째 표지 줄의 행). 표지 줄 둘 이상이 꼴 틀림보다 앞선다.
+#   rc 2 = 표지 없음 · 파일 없음(검사 대상 아님) — 출력 없음.
+#   awk 는 바이트로 비교한다 — 로캘(C 포함)과 mawk · gawk 에 관계없이 같은 결과.
 REQCHECK_MARKER='<!-- req-check:v1 -->'
 REQCHECK_HEADER='| task | 원문 위치 | 요구 | 만든 곳 / 넘긴 곳 | 상태 |'
 state_reqcheck_scan() { # <log.md> → rc 0 / 1 / 2
@@ -429,34 +432,29 @@ state_reqcheck_scan() { # <log.md> → rc 0 / 1 / 2
   out=$(_RQ_M="$REQCHECK_MARKER" _RQ_H="$REQCHECK_HEADER" awk '
     function trim(s) { sub(/^[ \t\r]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
     function blank(s) { s = trim(s); return (s == "" || s == "-" || s == "—" || s == "?") }
-    function die(m)  { print m " (" NR "행)"; bad = 1; exit }
-    # 코드 펜스(``` · ~~~ 로 시작하는 줄로 열고 같은 글자로 닫는다) 안의 표지는 표지가 아니다.
-    # 단순화: 펜스 글자 수(```` 가 ``` 를 품는 꼴)는 가리지 않는다, 그런 예시가 log 에 들어오면 길이까지 맞춘다.
-    # 파일 끝까지 닫히지 않은 펜스 안에 표지 줄이 있었으면 판정 불가(END) — 펜스 하나를 닫지 않아 검사가 조용히 꺼지지 않게.
-    st == 0 { line = trim($0); f3 = substr(line, 1, 3)
-              if (fence != "") { if (f3 == fence) { fence = ""; fmark = 0 } else if (line == ENVIRON["_RQ_M"]) fmark = 1; next }
-              if (f3 == "```" || f3 == "~~~") { fence = f3; fence_nr = NR; next }
-              if (line == ENVIRON["_RQ_M"]) st = 1; next }
-    st == 1 { line = trim($0); if (line == "") next
-              if (line != ENVIRON["_RQ_H"]) die("요구 대조 표의 머리 줄이 꼴과 다름"); st = 2; next }
-    st == 2 { if (trim($0) !~ /^\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|$/) die("요구 대조 표의 구분 줄이 꼴과 다름"); st = 3; next }
+    function die(m)  { if (!bad) why = m " (" NR "행)"; bad = 1; st = 4 }   # exit 하지 않는다 — 뒤의 표지 줄도 센다(부른 곳은 바로 next)
+    { line = trim($0); if (line == ENVIRON["_RQ_M"] && ++marks <= 2) mark_nr[marks] = NR }
+    st == 0 { if (line == ENVIRON["_RQ_M"]) st = 1; next }
+    st == 1 { if (line == "") next
+              if (line != ENVIRON["_RQ_H"]) { die("요구 대조 표의 머리 줄이 꼴과 다름"); next }; st = 2; next }
+    st == 2 { if (trim($0) !~ /^\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|$/) { die("요구 대조 표의 구분 줄이 꼴과 다름"); next }; st = 3; next }
     st == 3 { line = trim($0)
               if (substr(line, 1, 1) != "|") {                 # 빈 줄 · | 없는 글에서 표가 끝난다
-                if (index(line, "|")) die("요구 대조 표의 줄이 | 로 시작하지 않음")
+                if (index(line, "|")) { die("요구 대조 표의 줄이 | 로 시작하지 않음"); next }
                 st = 4; next }
               gsub(/\\\|/, "\001", line)                     # 칸 안의 \| 는 경계가 아니다
-              if (length(line) < 2 || substr(line, length(line)) != "|") die("요구 대조 표의 줄이 | 로 끝나지 않음")
+              if (length(line) < 2 || substr(line, length(line)) != "|") { die("요구 대조 표의 줄이 | 로 끝나지 않음"); next }
               n = split(substr(line, 2, length(line) - 2), c, "|")
-              if (n != 5) die("요구 대조 표의 칸 수가 5가 아님: " n)
+              if (n != 5) { die("요구 대조 표의 칸 수가 5가 아님: " n); next }
               t = trim(c[1]); s = trim(c[5])
-              if (t == "") die("요구 대조 표의 task 칸이 빔")
-              if (s != "열림" && s != "닫음") die("요구 대조 표의 상태가 열림 · 닫음이 아님: " s)
+              if (t == "") { die("요구 대조 표의 task 칸이 빔"); next }
+              if (s != "열림" && s != "닫음") { die("요구 대조 표의 상태가 열림 · 닫음이 아님: " s); next }
               if (!(t in total)) order[++k] = t
               total[t]++
               if (blank(c[4])) { if (s == "닫음") viol[++v] = t "\t" NR; else open_n[t]++ }
               next }
-    END { if (bad) exit 1
-          if (st == 0 && fence != "" && fmark) { print "닫히지 않은 코드 펜스 — 그 안에 요구 대조 표지 줄이 있음 (" fence_nr "행)"; exit 1 }
+    END { if (marks >= 2) { print "요구 대조 표지 줄이 둘 이상 — log 에 하나만 둔다 (" mark_nr[1] "행 · " mark_nr[2] "행)"; exit 1 }
+          if (bad) { print why; exit 1 }
           if (st == 0) exit 3
           if (st < 3) { print "요구 대조 표지 뒤에 표가 없음"; exit 1 }
           for (i = 1; i <= v; i++) print "VIOLATION\t" viol[i]

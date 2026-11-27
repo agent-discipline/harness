@@ -588,3 +588,19 @@ test_rq_p31b_marker_with_leading_spaces_and_cr_counts_as_second_marker() { # 표
   rq_assert_has_number "$first" p31b-reason-first-marker
   rq_assert_has_number "$second" p31b-reason-second-marker
 }
+
+test_rq_p31c_second_marker_after_bad_header_wins_over_shape_error() { # 표지 → 틀린 머리 줄 → 본문 → 둘째 표지 줄 → rc 1 · 까닭은 표지 줄 둘 이상(꼴 틀림보다 앞섬) · 두 행
+  rq_log "$(rq_preamble)" \
+    "$RQ_MARK" '| task | 틀린 머리 |' '|---|---|' '| T01 | 꼴틀림 |' \
+    '' \
+    '본문 글' \
+    '' \
+    "$RQ_MARK" "$RQ_HEAD" "$RQ_SEP" '| T02 | 규약 §2 | 요구-나 | hooks/a.sh:2 | 닫음 |'
+  local first second; first=$(rq_marker_line 1); second=$(rq_marker_line 2)
+  rq_scan "$RQ_LOG"
+  rq_assert_rc 1 p31c-rc1
+  rq_assert_one_line p31c-one-line
+  rq_assert_has_text '표지 줄이 둘 이상' p31c-reason-two-markers
+  rq_assert_has_number "$first" p31c-reason-first-marker
+  rq_assert_has_number "$second" p31c-reason-second-marker
+}
