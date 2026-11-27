@@ -1,4 +1,4 @@
-# log — task 를 닫기 전 요구 대조 (준비 차례 1 · 2)
+# log — task 를 닫기 전 요구 대조 (준비 차례 1 · 2 · 구현 차례)
 
 > 작업 폴더의 두 번째 파일(명세서와 한 쌍). 이번 차례는 L0(실측 기록 · 명세 초안 · 제안 글)이다 — 정책 파일은 고치지 않았다. 시각은 `date '+%m-%d %H:%M'` 로 확인한 값만 적었다(그 사이의 줄은 앞뒤 확인 값 사이에 있다는 뜻).
 > 이 차례는 deploy-study-note 세션의 메인이 띄운 워커가 했다. 다음 차례(합의 뒤 적용)는 이 log 에 이어 적는다.
@@ -23,6 +23,9 @@
 | 11-27 15:50 | 명세 2판(`cp` 로 덮어씀): 6.1 훅 설계(쓰기를 지켜보지 않고 표의 글자를 읽음 · 상태 칸 `열림`/`닫음` · 표지 `<!-- req-check:v1 -->`) · 6.2 못 보는 것 · task 일곱 · 더 물을 것 Q6~Q8 | core 새 줄을 훅 문구까지 넣어 다시 셈(사본 `proposal-check/core-A2.md`): **15,339자** |
 | 11-27 15:53 | `incident.md` 6절(덤 — 훅 결함의 자리 file:line) 덧붙임 | 다른 저장소의 작업 폴더를 작업 경로로 삼는 것은 core §7 상 정상 경로라 결함으로 보지 않음 — 핵심은 워커 · 메인 구분 |
 | 11-27 15:56 | `proposal.md` 2판: 훅 코드 제안(state-lib 파서 · gate-guard `req_check_gate` · reinject 단락 · task-mode-guard 두 곳) · 테스트 사례 P1~P14 · G1~G12 · R1~R4 · M1~M3 · S1 · 고장 내기 넷 · NEXT 후보 글 · 다섯 건 재평가 | 제안의 훅 코드는 돌려 보지 않음(다음 차례 task 03~05). 처음 쓴 판에 자리 표시 변수 하나와 폴더 사이 구분자 빠짐이 있어 고침 |
+| 11-27 16:02 | (메인 전달) 사용자의 답: Q6 "둘 다" · Q7 "이 세션이 만든 폴더 전부" · Q8 "함께 고친다" · 명세 "합의 — auto, 배포 전에 확인" | 구현 차례 시작 — 이 워커가 진행(PM). push · PR · 병합 · deploy 는 하지 않는다. 상태파일(읽기만): SPEC=1 · MODE=auto · TASK_PATH=이 폴더 |
+| 11-27 16:02 | 브랜치: 구현이 들어가므로 같은 커밋(`1aadde2`)에서 `feat/close-out-requirement-check` 를 만들어 옮김 | `docs/close-out-requirement-check` 는 `1aadde2` 에 그대로 남는다 |
+| 11-27 16:02 | **load-bearing 가정 1 확인**(배포본을 건드리지 않고): 이 워커(서브에이전트)가 TASK_PATH 의 `log.md` 를 offset · limit 없이 Read → 배포된 `reread-track.sh`(작업 트리와 같음 — diff 확인)는 agent_id 가 없을 때만 `<sid>.reread` 에 기록한다. 다른 조건(도구 Read · 전체 읽기 · 이름 log.md · TASK_PATH 일치 · reread-seen 있음)은 모두 맞다 | `.reread` 의 마지막 기록이 11-22 그대로(mtime 02:24) → **서브에이전트의 PostToolUse(Read) 입력에 agent_id 가 실린다**. Write 의 PostToolUse 는 같은 공통 칸이라 실릴 것으로 본다(추론) — Write 에서의 직접 확인은 배포 뒤 smoke(task 07, 사용자)로 넘긴다. 부작용: 없음(기록이 안 됐으므로 메인의 재독 상태는 그대로) |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
