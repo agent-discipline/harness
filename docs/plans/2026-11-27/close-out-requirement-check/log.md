@@ -63,6 +63,7 @@
 | 11-27 19:07 | 무효였던 메인 재실행(`69dce52`)의 판정 | `run.sh` 는 INTEGRITY VIOLATION 이면 통과 · 실패 수를 내지 않는다 → 결과가 없으니 유효로 칠 수 없다(차이 목록은 `decisions.md` 한 줄뿐 — 테스트가 더럽힌 것이 아니라 메인 세션의 capture-decision 이 TASK_PATH 에 쓴 것). 앞으로: 메인 재실행은 **따로 된 깨끗한 작업 트리**(`…/scratchpad/wt/harness-base` 를 그 커밋으로 detached checkout)에서 돌린다 — 추적되지 않는 decisions.md 가 없어 메인의 질문과 부딪히지 않는다 |
 | 19:1x | 인증이 끊겨(사용자 로그인 변경) blind 테스트 워커가 도중에 멈춤 → 메인이 확인: 테스트 파일 문법 통과 · 43개 · 끝까지 쓰여 있음 · 그 워커의 run.sh 둘은 이미 끝남(남은 실행 0). lock 을 메인이 다시 만들고 커밋 `01c139a`(테스트 — 구현 전) | 깨끗한 작업 트리(`wt/harness-base` 를 `01c139a` 로 detached)에서 red: **473 통과 · 6 실패 · 0 건너뜀** — 실패 6 = 새 계약 테스트(p26 · p30 · p30b · p30c · p31 · p31b) |
 | 11-27 19:17 | 구현 워커(Opus 105k) 회수 → 커밋 `2b6fb33` | state-lib +19/−21(펜스 코드 7줄 지움 · 표지 줄 수 · `die` 가 끝까지 읽게) · 템플릿 두 구절 · 워커의 고장 내기 2(둘째 표지 무시 → p26 · p31 · p31b 실패 / `die` 가 exit → 잡는 테스트 없음 → 같은 워커가 p31c 를 더함 · 그 고장에서 p31c 실패) · lock 480. 메인 재실행(깨끗한 작업 트리) · 루프 3(좁게 · Opus 실행 ∥ codex) 시작. lock 을 다시 만든 사유 = 이 행 |
+| 11-27 19:22 | t03 루프 3(좁게): Opus(실행 · 89k — mawk · gawk 5.3.2 에서 44/44) ∥ codex — **둘 다 지적 없음** · 메인 재실행(깨끗한 작업 트리 `2b6fb33`) **480 통과 · 0 실패 · 0 건너뜀** | **task 03 닫음**. 후보 하나(BOM · NBSP 표지). task 04 blind 테스트 워커 시작 — 계약을 처음부터 넉넉히(흔한 꼴 · 놓침과 막힘 양쪽). **진행 중 결정**: 사이드카에 **쓰는** 일(task-mode-guard)은 task 05 로 옮김(task-mode-guard 를 고치는 일을 한 task 에) — task 04 는 읽는 쪽(`state_reqcheck_paths` · gate-guard · reinject) |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -71,6 +72,7 @@
 | 11-27 16:18 | 01 | 리뷰 지적 t01-10 을 고치려고 계획 밖 파일 `playbooks/writing/work-records.md`(규칙 10)에 가리키는 한 구절을 더한다 | 목표 · 불변식은 그대로이고 고칠 곳만 는다(task-units §4 "그 밖은 기록하고 진행") · core 는 글자 여유가 적어 work-records 가 싸다 | 아니오 |
 | 11-27 17:55 | 03 | 파서 계약의 세부 여섯(위 타임라인 11-27 17:55 행)을 메인이 정함 | 명세 6.1 ① 이 정하지 않은 꼴이고, 판정 불가(차단)와 오탐 사이에서 명세의 "푸는 길"에 맞게 흔한 꼴을 받아들이는 쪽 — 나중에 바꾸기 쉬운 파서 세부(task-units §4 의 넷에 들지 않음) | 예 — task 04 가 같은 파서를 부른다 |
 | 11-27 18:50 | 03 | 리뷰 반영 뒤 드러난 위험 ①(닫히지 않은 펜스 → 조용히 꺼짐)을 루프 2 를 기다리지 않고 바로 고치고, 템플릿(task 01 의 파일)에 "표 바로 아래 빈 줄" 한 구절을 더한다 | 목표 · 불변식(놓치지 않음 · 판정할 수 없으면 막는다)에 맞추는 고침이고 고칠 곳만 는다 | 아니오 |
+| 11-27 19:22 | 04 · 05 | 사이드카(`<sid>.req-check-paths`)에 쓰는 일을 task 04 에서 task 05 로 옮김 | task-mode-guard 를 고치는 두 일(agent_id 검사 · 사이드카 쓰기)을 같은 파일 · 같은 task 에 모은다 — 목표 · 불변식 그대로, 나누는 자리만 바뀜 | 예 — task 04 테스트는 사이드카 파일을 직접 만든다 |
 | 11-27 15:28 | — | 작업 트리의 base 를 로컬 `main` 대신 `origin/main` 으로 | 지시의 뜻(기본 브랜치의 끝에서 시작)과 같고, 브랜치를 지우고 다시 만들면 되돌릴 수 있다 | 예 — 줄 번호 · 글자 수가 이 판 기준 |
 
 ## 옮김 대조표 (task 02 — `writing/rule-docs.md` 규칙 6 · 원래 위치는 모두 core §6 110행 · 워커 packet 16:07 · 메인과 t02 Opus 리뷰어가 미러에서 다시 확인)
@@ -99,6 +101,7 @@
 
 - review packet: t01 루프 1 — base `77ba594` / 리뷰한 SHA `0b87e2d` / `$OUT` = `…/scratchpad/rv/t01-l1` / 미러 = 같은 폴더 `mirror/`
 - review packet: t01 루프 2 — base `77ba594` / 리뷰한 SHA `1a5db40` / `$OUT` = `…/scratchpad/rv/t01-l2`
+- review packet: t03 루프 3(좁게) — base `69dce52` / 리뷰한 SHA `2b6fb33` / `$OUT` = `…/scratchpad/rv/t03-l3`
 - review packet: t03 루프 2(좁게) — base `a5a8c2c` / 리뷰한 SHA `69dce52` / `$OUT` = `…/scratchpad/rv/t03-l2`
 - review packet: t03 루프 1 — base `f6101f3` / 리뷰한 SHA `a5a8c2c` / `$OUT` = `…/scratchpad/rv/t03-l1`
 - review packet: t01 루프 8(좁게 — 이번 삭제와 닿는 곳만) — base `979e8a2`(delta) · 누적 `77ba594` / 리뷰한 SHA = 수 대조 삭제 커밋 / `$OUT` = `…/scratchpad/rv/t01-l8`
@@ -144,6 +147,7 @@
 | t03-5 | 03 | 2 | opus | hooks/state-lib.sh:437,459 · req-check.sh:531(p30c) — 닫히지 않은 펜스 뒤에 보통 코드 블록이 하나라도 있으면 짝이 뒤집혀 `fmark=0` → rc 2(검사가 조용히 꺼짐) | 실행 — `69dce52` · rvcase/A.md · mawk 1.3.4 · gawk 5.3.0 모두 rc=2(대조 B.md 는 VIOLATION) | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
 | t03-6 | 03 | 2 | opus | hooks/state-lib.sh:436,438 — 줄 앞 백틱 셋으로 시작하는 인라인 코드(```` ```rm -rf``` ````)를 펜스로 셈 → 짝이 뒤집혀 조용히 꺼지거나(rc 2) 오탐(rc 1) | 실행 — rvcase/C.md · E.md rc=2 · D.md rc=1 | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
 | t03-7 | 03 | 2 | codex | hooks/state-lib.sh:436-439,458-460 — 열린 ```` ```text ```` 안의 ```` ```sh ```` 를 닫는 줄로 보아 표지 기록을 지움 → rc 2 | 코드로만 확인(같은 원인 — t03-5) | 검증 | 반드시 필요 | 채택 → 설계를 되돌림(사용자의 답 — 펜스를 세지 않고 표지는 하나) | fixed | 2 |
+| t03-8 | 03 | 3 | opus | (참고) 파일 머리 BOM · NBSP 가 붙은 표지 줄은 표지로 안 봐 rc 2 | 미실행 — 후보 | 검증 | 있으면 좋다 | 후보 — (2) 경로는 있으나 트리거가 현실에 드묾(log 는 Claude 의 Write · Edit · 셸이 쓰고 BOM 을 붙이지 않는다) → NEXT | closed | |
 | t02-3 | 02 | 2 | opus(L2-1) | README.md:179 · settings.json — 저장소의 `settings.json` 사본에 detect-layer 등록이 없다(여덟) | 미실행 — 후보: 원래 있던 것 | 문서 | 하면 좋다 | 후보 — (3) 이번 변경 전부터 있던 것 · 이미 후보(`docs/plans/2026-11-20/review-triage/replay.md:13` · NEXT N8) | closed | |
 | t02-4 | 02 | 2 | opus(L2-2) | README.md:188 — 옮기면서 detect-layer 사이드카가 세션별(`<sid>.events`)이라는 말이 빠짐 | 코드로만 확인 — ① 문서 | 문서 | 있으면 좋다 | 채택 — (4) 옮김 대조(옮긴 뒤 위치가 빈 것 0) | fixed | 2 |
 | t02-c1 | 02 | 1 | codex(D1) · opus(2) | src/core.md:111 · hooks/deploy.sh:18 — README 는 배포되지 않아 다른 프로젝트 세션에서 가리킴이 풀리지 않음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 사용자가 이 옮김을 골랐다(분기 Q4) · core 는 이미 README 를 가리킨다(§0.2 "세는 법 = README" · §5 "README '실측' 절") — 같은 설계. 훅 목록은 모델이 따를 행동이 아니라 색인이고 행동 규칙은 core §1 · §6 · §7 에 남음 | closed | |
@@ -151,6 +155,7 @@
 
 - verified — t02 루프 3(신규 채택 0 · 두 리뷰어 모두 지적 없음): 네이밍 / README.md:179 ↔ hooks/*.sh / 훅 이름 아홉을 파일명과 대조 / opus · codex · 완전성 / packet-diff.md:77 → README.md:180-190 · src/core.md:111 → README.md:150,179 / 옮김 대조 빈 칸 0 · 가리킴 이어짐 / opus · codex · 통합 / hooks/deploy.sh:6,18,179 ↔ README.md:179,222 / 등록 위치 · 배포 제외 서술이 맞음 / opus · codex · 설계 품질 / src/core.md:111 / 단일 출처 / opus · codex · 과잉 구현 / src/core.md:111 / 줄이 짧아짐 / opus. 비적용(API · 메서드 · 쿼리 · 동시성 — 문서). 비대칭 없음 → **t02 리뷰 종료**.
 - verified — t01 루프 6(신규 채택 0 · 두 리뷰어 모두 지적 없음): API 단위 / templates/log.md:25-26 · task-units.md:45 · core.md:75 / 표가 조용히 무시되는 경로(둘째 표 · 표 밖 줄 · 표지 리터럴) · 꼴이 틀리면 막힘 · 긴급은 알림 / opus · codex · 메서드 내부(절차 흐름) / task-units.md:40,45,52,53 / 검증 앞 대조 → 재확인 → 메운 diff 재검증 / opus · codex · 네이밍 / templates/log.md:26,28-29,32 ↔ spec 6.1 ① / 표지 · 머리 줄 · 상태 값 · `T01` / opus · codex · 완전성 / task-units.md:26,45,53 · requirement-spec.md:98 / 넘김 · 다시 열기 · 워커 대조 · 기각 조건 · 마감 / opus · codex · 통합 / templates/log.md:5,25 · work-records.md:37 · task-units.md:45,61 · core.md:75,115 / 앞서는 쪽이 문장에 있음 / opus · codex · 설계 품질 / templates/log.md:24 · task-units §3 / 단일 출처 / opus · codex · 과잉 구현 / templates/log.md:24 / 되풀이 없음 / opus · codex. 비적용(쿼리 · 동시성 — 문서). 비대칭 없음 → **t01 리뷰 종료**(루프 6 — 사용자의 답대로 3 을 넘겨 계속함).
+- verified — t03 루프 3(신규 채택 0 · 두 리뷰어 지적 없음): 메서드 내부 / hooks/state-lib.sh:430-466 / 펜스 코드 없음(grep) · 표지 줄 수를 모든 줄에서 셈 · END 에서 표지 둘 이상이 꼴 틀림보다 앞섬 / opus(실행) · codex · 이식성 / mawk · mawk C · gawk 5.3.2(docker) · gawk C 에서 test_rq_ 44/44 / opus · 문서 / templates/log.md 두 구절 ↔ 구현 / opus · codex. → **t03 리뷰 종료**.
 
 ## 생략한 검증
 
