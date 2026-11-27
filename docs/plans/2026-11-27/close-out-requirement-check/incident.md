@@ -125,3 +125,17 @@
 - 규약 §7.1 의 T8 · T5 줄이 그 task 를 닫던 때에도 지금 글자였는지(폴더가 git 밖 · T2 · T4 줄만 대화 출력으로 확인).
 - 워커 토큰의 값이 누적인지 증분인지(log 의 "이어서" 워커).
 - 압축 뒤 메인이 명세 · log 를 다시 읽었는지(reread-track 의 사이드카는 보지 않았다).
+
+## 6. 덤으로 드러난 것 — 워커의 Write 가 메인 세션의 게이트를 리셋했다 (하네스 훅 결함, 2026-11-27)
+
+- 기록(메인이 전한 것): 이 준비 차례의 워커(이 문서를 쓴 워커)가 `Write` 로 새 작업 폴더(`…/scratchpad/wt/harness-closeout/docs/plans/2026-11-27/close-out-requirement-check/`)의 문서를 만들자, **메인 세션의 상태파일이 `SPEC=0 · MODE=UNSET · TASK_PATH=<이 작업 폴더>` 가 됐다**(11-27 15:45 메인이 상태파일을 읽어 확인). 메인이 진행 중이던 다른 작업의 합의된 상태가 사용자 모르게 풀렸고, 메인이 사용자에게 묻고 `set-state` 로 되돌렸다(15:48).
+- 기록(이 워커의 log): 워커는 이 폴더에 `incident.md` → `requirement-spec.md`(15:4x 초) → `proposal.md` → `log.md`(15:44 무렵) 차례로 `Write` 했다. 리셋을 일으키는 진입점은 `requirement-spec.md` 와 `log.md` 둘이라 **처음 리셋은 `requirement-spec.md` 의 Write 였을 것**이다(해석 — 훅의 출력은 워커에게 보이지 않았다). 이 문서를 고친 두 번째 차례에서는 두 파일을 `Write` 하지 않고 셸(`cp` · 파이썬)로만 고쳤다 — 같은 리셋을 다시 내지 않으려는 것이고, 훅이 Bash 쓰기를 보지 못하는 한계를 이용한 것이기도 하다.
+- 훅 코드의 자리(`origin/main` `7688bad`):
+  - `hooks/task-mode-guard.sh:35-36` — 도구 이름이 `Write` 인지만 본다. 입력의 `agent_id` 를 보지 않는다(같은 저장소의 `reread-track.sh:7`("메인의 Read 만 — agent_id 있으면 무시") · `gate-guard.sh:363`(`reread_gate`) · `gate-guard.sh:405`(`worker_notice`)는 이 칸으로 메인과 워커를 가른다).
+  - `hooks/task-mode-guard.sh:38-44` — 경로가 `*/docs/plans/*/requirement-spec.md` · `*/docs/plans/*/log.md` 이면 어느 저장소든 진입점으로 본다.
+  - `hooks/task-mode-guard.sh:46-52` — 상태파일은 입력의 `cwd` 와 `session_id` 로 찾는다. 서브에이전트의 호출도 메인과 같은 `session_id` 를 실어(이번 리셋이 그 증거) **메인의 상태파일**에 닿는다.
+  - `hooks/task-mode-guard.sh:58-60` — 작업 폴더 = 쓴 파일의 폴더(canonical). 저장소 경계를 보지 않는다.
+  - `hooks/task-mode-guard.sh:70-74` → `:78-80` — 저장된 `TASK_PATH` 와 다르면 `MODE UNSET SPEC 0 PENDING_GATE 0` + `TASK_PATH` 를 한 번에 쓴다.
+- 판단: 결함의 핵심은 **워커의 쓰기와 메인의 쓰기를 가르지 못하는 것**(`:35-36`)이다. 다른 저장소의 작업 폴더를 작업 경로로 삼는 것(`:38-44` · `:58-60`)은 그 자체로는 결함이 아니다 — core §7 은 기록을 "변경된 프로젝트"에 두게 하므로 메인이 다른 저장소에 작업 폴더를 만드는 것은 정상 경로이고, 그때도 리셋이 걸려야 한다.
+- 왜 지금까지 드러나지 않았나(해석): 작업 폴더 문서는 메인이 쓰는 것이 규칙(core §5 "log 단일 writer" · §1 "질문 · 답변 · 명세 작성은 메인이 직접")이라 워커가 그 파일을 Write 하는 경로가 드물었다. 이번처럼 "준비 문서 작성"을 워커에게 맡기면 걸린다.
+- 남은 것: 서브에이전트의 PostToolUse(Write) 입력에 `agent_id` 가 실제로 실리는지는 확인하지 않았다(명세 8절 가정 1). 리셋 때 훅이 낸 stderr 는 기록이 없다.
