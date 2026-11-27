@@ -9,6 +9,7 @@
 #   - 손상 상태는 quarantine + UNSET 재생성(자동 변환 금지) — 다음 게이트가 재질문.
 #   - 긴급 빚(DEBT) 재주입: **모드·리셋 무관** DEBT=1 이면 **매 턴 빚 1줄** (해소 전 완료 선언 금지·차기 L1 빚 우선).
 #     빚 정본은 log.md '생략한 검증' — 훅은 재주입만, DEBT 토글은 set-state debt-clear(사용자 확인 후)만.
+#   - 요구 대조(v4.10): 읽는 log 의 표에 위반 · 판정 불가 · 열린 빈 칸이 있으면 종류마다 한 줄(없으면 출력 없음).
 #
 # 종료 코드: 0 (stdout이 컨텍스트로 주입됨)
 
@@ -76,6 +77,37 @@ if [ "$RR_RC" != 0 ]; then
 elif [ -n "$UNREAD" ]; then
   echo "[게이트] 압축 뒤 작업 기록 미독 — 구현 파일 쓰기 전에 Read:"
   printf '%s\n' "$UNREAD" | sed 's/^/  /'
+fi
+
+# 요구 대조 알림(v4.10 — 명세 6.1 ②) — 읽는 log(TASK_PATH + 사이드카 폴더)를 모아 종류마다 한 줄:
+#   위반(닫음 + 빈 칸) → 판정 불가 → 열린 빈 칸(`T01 1/2` — 처음 나온 차례 · 다섯 task 까지 + ` 외 N`) 차례.
+#   막히는 두 줄을 앞에. 찾은 것이 없으면 출력 없음(종전과 바이트 동일). 고정 지시는 trap 이라 이 뒤(출력 끝)에 온다.
+RQ_FINDINGS=$(state_reqcheck_findings "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)")
+RQ_VIOLATION=""; RQ_UNDECIDABLE=""; RQ_OPEN=""; RQ_OPEN_COUNT=0
+while IFS=$'\t' read -r RQ_KIND RQ_WHERE RQ_REST; do
+  case "$RQ_KIND" in
+    VIOLATION)     # RQ_REST = <task>\t<행>
+      RQ_VIOLATION+="${RQ_VIOLATION:+ · }${RQ_REST%$'\t'*} ${RQ_REST##*$'\t'}행($RQ_WHERE)" ;;
+    UNDECIDABLE)
+      RQ_UNDECIDABLE+="${RQ_UNDECIDABLE:+ · }$RQ_WHERE: $RQ_REST" ;;
+    OPEN)          # RQ_REST = <task>\t<빈 칸 수>\t<줄 수> — 수 둘은 뒤에서 가른다
+      RQ_OPEN_COUNT=$((RQ_OPEN_COUNT + 1))
+      if [ "$RQ_OPEN_COUNT" -le 5 ]; then
+        RQ_TASK_BLANK=${RQ_REST%$'\t'*}
+        RQ_OPEN+="${RQ_OPEN:+ · }${RQ_TASK_BLANK%$'\t'*} ${RQ_TASK_BLANK##*$'\t'}/${RQ_REST##*$'\t'}"
+      fi ;;
+  esac
+done <<< "$RQ_FINDINGS"
+if [ "$DEBT" = "1" ]; then
+  RQ_NOTE="긴급(DEBT=1)이라 막지 않는다 — log.md '생략한 검증'에 빚으로"
+else
+  RQ_NOTE="L1 쓰기가 막힌다 — 칸을 채우거나 상태를 열림으로 되돌린다 · 꼴은 templates/log.md"
+fi
+[ -z "$RQ_VIOLATION" ] || echo "[요구 대조] 닫음인데 '만든 곳 / 넘긴 곳'이 빈 칸 — $RQ_VIOLATION ($RQ_NOTE)"
+[ -z "$RQ_UNDECIDABLE" ] || echo "[요구 대조] 표 판정 불가 — $RQ_UNDECIDABLE ($RQ_NOTE)"
+if [ "$RQ_OPEN_COUNT" -gt 0 ]; then
+  if [ "$RQ_OPEN_COUNT" -gt 5 ]; then RQ_OPEN+=" 외 $((RQ_OPEN_COUNT - 5))"; fi
+  echo "[요구 대조] 열린 빈 칸 — $RQ_OPEN"
 fi
 
 exit 0

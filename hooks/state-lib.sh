@@ -467,3 +467,54 @@ state_reqcheck_scan() { # <log.md> → rc 0 / 1 / 2
     *) printf '%s\n' "log.md 읽기 실패(awk rc $rc): $f"; return 1 ;;
   esac
 }
+
+# 요구 대조가 읽을 log.md 목록 — TASK_PATH 먼저, 그다음 사이드카 <sid>.req-check-paths 의 줄(작업 폴더 하나씩)의 차례대로.
+#   stdout(rc 0): 줄마다 `<작업 폴더>/log.md`. 같은 폴더(글자 그대로 같은 줄)는 처음 것만 · 빈 줄은 건너뛴다 · 끝 개행 없는
+#   마지막 줄도 읽는다. task_path 가 비고 사이드카가 없으면 출력 없음. 폴더 · log 가 있는지는 보지 않는다(판정은 scan — rc 2).
+#   rc 1 = 사이드카 판정 불가(심링크 · 정규 파일 아님 · 읽기 불가 · 절대 경로가 아닌 줄 — 손상을 조용히 건너뛰지 않는다)
+#     — stdout = 사이드카 경로 한 줄. 호출부는 판정 불가로 다루되 TASK_PATH 의 log 는 따로 읽는다.
+#   사이드카에 쓰는 쪽은 task-mode-guard(메인이 Write 로 만든 작업 폴더). 경로는 ENVIRON 으로(-v 는 역슬래시를 해석한다).
+state_reqcheck_paths() { # <state_dir> <sid> <task_path> → rc 0 / 1
+  local dir="${1:-}" sid="${2:-}" tp="${3:-}" sidecar out
+  sidecar="$dir/$sid.req-check-paths"
+  if [ -z "$sid" ] || { [ ! -e "$sidecar" ] && [ ! -L "$sidecar" ]; }; then
+    [ -z "$tp" ] || printf '%s/log.md\n' "$tp"
+    return 0
+  fi
+  { [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]; } || { printf '%s\n' "$sidecar"; return 1; }
+  # awk 는 main 의 exit 뒤에도 END 를 돈다 — 손상이면 END 에서 1. 출력은 성공했을 때만 내보낸다.
+  out=$(_RP_T="$tp" awk '
+    BEGIN { tp = ENVIRON["_RP_T"]; if (tp != "") { seen[tp] = 1; print tp "/log.md" } }
+    $0 == "" { next }
+    substr($0, 1, 1) != "/" { bad = 1; exit }
+    !($0 in seen) { seen[$0] = 1; print $0 "/log.md" }
+    END { if (bad) exit 1 }
+  ' "$sidecar" 2>/dev/null) || { printf '%s\n' "$sidecar"; return 1; }
+  [ -z "$out" ] || printf '%s\n' "$out"
+}
+
+# 요구 대조의 찾은 것 — gate-guard(차단) · reinject-mode(알림)가 함께 쓴다. 읽을 log 마다 파서를 **한 번만** 부른다
+#   (매 L1 쓰기 · 매 턴 도는 길 — 폴더가 여럿이고 log 가 커도 파일을 두 번 읽지 않는다).
+#   stdout(늘 rc 0 — 판정 불가도 줄로 낸다): 탭으로 가른 줄. 찾은 것이 없으면(표지 없음 · 위반도 열린 빈 칸도 없음) 출력 없음.
+#     `VIOLATION\t<log>\t<task>\t<행>` · `OPEN\t<log>\t<task>\t<빈 칸 수>\t<줄 수>` · `UNDECIDABLE\t<log 또는 사이드카>\t<까닭>`
+#   사이드카 판정 불가(paths rc 1)면 그 줄을 내고 TASK_PATH 의 log 는 그대로 읽는다(사이드카 손상이 TASK_PATH 위반을 가리지 않게).
+#   파서 rc 2(표지 없음 · 파일 없음 — 사라진 폴더 포함)는 건너뛴다.
+state_reqcheck_findings() { # <state_dir> <sid> <task_path>
+  local paths paths_rc=0 log_file out scan_rc line
+  paths=$(state_reqcheck_paths "${1:-}" "${2:-}" "${3:-}") || paths_rc=$?
+  if [ "$paths_rc" != 0 ]; then
+    printf 'UNDECIDABLE\t%s\t%s\n' "$paths" "요구 대조 사이드카를 읽을 수 없음(심링크 · 정규 파일 아님 · 권한 · 절대 경로가 아닌 줄)"
+    paths=""; [ -z "${3:-}" ] || paths="$3/log.md"
+  fi
+  while IFS= read -r log_file; do
+    [ -n "$log_file" ] || continue
+    scan_rc=0; out=$(state_reqcheck_scan "$log_file") || scan_rc=$?
+    case "$scan_rc" in
+      0) while IFS= read -r line; do   # `<종류>\t<나머지>` → 종류 뒤에 log 경로를 끼운다
+           [ -z "$line" ] || printf '%s\t%s\t%s\n' "${line%%$'\t'*}" "$log_file" "${line#*$'\t'}"
+         done <<< "$out" ;;
+      1) printf 'UNDECIDABLE\t%s\t%s\n' "$log_file" "$out" ;;
+    esac
+  done <<< "$paths"
+  return 0
+}
