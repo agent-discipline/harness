@@ -54,6 +54,7 @@
 | 11-27 17:55 | 워커가 남긴 모호한 곳을 계약으로 정해 같은 워커에게 테스트를 더하게 함 | 판정 불가 = 모든 L1 차단이라 흔한 꼴은 판정 불가로 떨어지지 않게: ① 표지와 머리 줄 사이 빈 줄은 건너뜀 ② CRLF 의 `\r` 은 공백 ③ 읽을 수 없는 log → rc 1(명세 2절 그대로) ④ 들여쓴 표 줄은 앞뒤 공백을 무시한 뒤 `|` 로 시작하면 표 ⑤ 넷째 칸의 `\|` 는 채움 ⑥ `**닫음**` 은 상태 값 밖 → rc 1 · 공백은 무시 |
 | 11-27 18:0x | red 기준 메인 재실행(`f6101f3`) | **436 통과 · 33 실패 · 0 건너뜀** — 실패 33 모두 `test_rq_` · rc 127(함수 없음) · 기존 실패 0 |
 | 11-27 18:17 | task 03 구현 워커(Opus 131k+) 회수 → 커밋 `a5a8c2c` | 바뀐 것 `hooks/state-lib.sh` 하나(+53) · 테스트 · lock 변경 없음(`git diff --quiet -- hooks/tests`). **메인 재실행 469 통과 · 0 실패 · 0 건너뜀**. 워커 packet: mawk · mawk+C 로캘 · busybox awk 33/33 · gawk 는 이 머신에 없음 · 고장 다섯 모두 잡힘 · proposal 과 다른 곳 하나(표지를 grep 으로 먼저 찾지 않고 awk 가 줄 전체로 판정 — 인용 안의 표지 글자만 있는 log 가 차단으로 떨어지지 않게). **메인 고장 내기**: 저장소 밖 사본(`…/scratchpad/break-t03`)에서 state-lib.sh:430 빈 칸 정의의 `|| s == "-"` 를 지움(`cmp` 430행 다름 확인) → 넷째 칸 `-` 인 닫음 줄의 VIOLATION 이 사라짐(원본은 `VIOLATION T01 6`) — P5 가 지키는 규칙. **지연 실측**: 156KB log(사고의 139KB log + 표) 10회 0.098s(한 번 약 10ms) |
+| 11-27 18:27 | t03 루프 1: Opus(실행 · 123k) ∥ codex | 측정(Opus): 195KB 한 번 약 11.5ms · 폴더 열 개 81ms · 1.37MB 29ms · 새 bash+source+scan 19ms · gawk 5.2.1(docker · C · C.UTF-8) 33/33 · mawk · busybox 와 탐침 29개 바이트까지 같음 · 반쯤 쓴 표는 판정 불가 + 행 번호(무엇을 하라는 말은 없음 — task 04 메시지에서). 지적: Opus 1(펜스 — 실행 재현) · codex 2(칸만 있는 구분 줄 · 앞 `|` 빠진 첫 본문 줄 — 메인이 사본에서 재현) · 테스트 공백 1. 채택 넷 → 수정 워커. **사고**: Opus 리뷰어가 읽기 전용 사본 mkdir 실패 뒤 cd 실패를 모른 채 명령을 이어 deploy-study-note 의 backend 저장소 작업 트리에 임시 파일 15개를 만들었고 스스로 스크래치로 옮김 — 메인 확인: backend 저장소 `git status --porcelain` 비어 있음 · 그 파일들 없음 |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -89,6 +90,7 @@
 
 - review packet: t01 루프 1 — base `77ba594` / 리뷰한 SHA `0b87e2d` / `$OUT` = `…/scratchpad/rv/t01-l1` / 미러 = 같은 폴더 `mirror/`
 - review packet: t01 루프 2 — base `77ba594` / 리뷰한 SHA `1a5db40` / `$OUT` = `…/scratchpad/rv/t01-l2`
+- review packet: t03 루프 1 — base `f6101f3` / 리뷰한 SHA `a5a8c2c` / `$OUT` = `…/scratchpad/rv/t03-l1`
 - review packet: t01 루프 8(좁게 — 이번 삭제와 닿는 곳만) — base `979e8a2`(delta) · 누적 `77ba594` / 리뷰한 SHA = 수 대조 삭제 커밋 / `$OUT` = `…/scratchpad/rv/t01-l8`
 - review packet: t01 루프 7 — base `77ba594` / 리뷰한 SHA `979e8a2` / `$OUT` = `…/scratchpad/rv/t01-l7`
 - review packet: t01 루프 6 — base `77ba594` / 리뷰한 SHA `b693e1d` / `$OUT` = `…/scratchpad/rv/t01-l6`
@@ -125,6 +127,10 @@
 | t01-22 | 01 | 7 | opus | task-units.md:45 — 계약 문서가 있을 때 명세 칸의 요구가 원문 줄 수에 드는지 두 갈래 | 코드로만 확인 — ① 문서 | 검증 | 하면 좋다 | 채택 → 설계를 되돌림 — 풀림 — 원문 줄 수가 없어졌다 | fixed | 7 |
 | t01-23 | 01 | 7 | codex | task-units.md:45 — 넘겨받은 줄은 받는 task 의 원문 줄 수와 맞출 기준이 없음 | 코드로만 확인 — ① 문서 | 검증 | 하면 좋다 | 채택 → 설계를 되돌림 — 풀림 — 받는 task 의 줄 수를 맞출 일이 없어졌다 | fixed | 7 |
 | t01-24 | 01 | 8 | opus | task-units.md:45 — 남은 "거른 출력으로 줄을 세지 않는다"가 '세기'만 막는 것으로 읽힐 수 있음 | 미실행 — 기각 | 문서 | 있으면 좋다 | 기각 — 바로 앞 구절 "그 절을 Read 로 끝까지 읽고 옮기며"가 같은 행동을 막는다(리뷰어도 실제로 잘못 행동할 가능성 낮음으로 봄) — 읽는 사람의 행동이 달라지지 않는 문구(메인 지시: 취향의 문구는 기각) | closed | |
+| t03-1 | 03 | 1 | opus | hooks/state-lib.sh:432(:416 주석과 다름) · req-check.sh:73-86 — 코드 펜스(``` · ~~~) 안의 표지 줄을 진짜 표지로 읽음 → 진짜 표의 닫음 빈 칸을 놓치거나(조용한 통과) 펜스 안 예시의 꼴로 판정 불가(차단) | 실행 — `a5a8c2c` · opus-run/work/fence.sh · f1 rc=0 `OPEN T4 1 1`(기대 VIOLATION T01) · f2 rc=1 | 데이터 | 반드시 필요 | 채택 — (3) 이번 코드 · (4) 2절 "놓치지 않음" · 이 작업의 명세 6.1 ① 예시가 바로 그 꼴 | open | |
+| t03-2 | 03 | 1 | codex | hooks/state-lib.sh:435 — 칸만 있는 `|   |   |…|` 를 구분 줄로 받아 빈 표 · rc 0 | 실행 — 메인 · `a5a8c2c` 사본 · rc=0 출력 없음(기대 rc 1) | 계약 | 반드시 필요 | 채택 — (4) 2절 "표지가 있는데 꼴이 틀리면 막는다" | open | |
+| t03-3 | 03 | 1 | codex | hooks/state-lib.sh:436 — 구분 줄 바로 아래 첫 본문 줄의 앞 `|` 가 빠지면 표가 거기서 끝나 rc 0 · 출력 없음(닫음 빈 칸을 놓침) | 실행 — 메인 · `a5a8c2c` 사본 · rc=0 출력 없음 | 계약 | 반드시 필요 | 채택 — (4) 조용한 놓침 · 쓰는 중 흔한 한 글자 누락 | open | |
+| t03-4 | 03 | 1 | opus | req-check.sh — "표지 + 머리 줄, 파일 끝"을 보는 사례가 없어 `st < 3` → `st < 2` 고장이 통과 | 코드로만 확인 — ② 테스트 공백 | 검증 | 하면 좋다 | 채택 — (2) 그 꼴이 차단에서 통과로 바뀌어도 테스트가 모름 | open | |
 | t02-3 | 02 | 2 | opus(L2-1) | README.md:179 · settings.json — 저장소의 `settings.json` 사본에 detect-layer 등록이 없다(여덟) | 미실행 — 후보: 원래 있던 것 | 문서 | 하면 좋다 | 후보 — (3) 이번 변경 전부터 있던 것 · 이미 후보(`docs/plans/2026-11-20/review-triage/replay.md:13` · NEXT N8) | closed | |
 | t02-4 | 02 | 2 | opus(L2-2) | README.md:188 — 옮기면서 detect-layer 사이드카가 세션별(`<sid>.events`)이라는 말이 빠짐 | 코드로만 확인 — ① 문서 | 문서 | 있으면 좋다 | 채택 — (4) 옮김 대조(옮긴 뒤 위치가 빈 것 0) | fixed | 2 |
 | t02-c1 | 02 | 1 | codex(D1) · opus(2) | src/core.md:111 · hooks/deploy.sh:18 — README 는 배포되지 않아 다른 프로젝트 세션에서 가리킴이 풀리지 않음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 사용자가 이 옮김을 골랐다(분기 Q4) · core 는 이미 README 를 가리킨다(§0.2 "세는 법 = README" · §5 "README '실측' 절") — 같은 설계. 훅 목록은 모델이 따를 행동이 아니라 색인이고 행동 규칙은 core §1 · §6 · §7 에 남음 | closed | |
