@@ -26,6 +26,12 @@
 | 11-27 16:02 | (메인 전달) 사용자의 답: Q6 "둘 다" · Q7 "이 세션이 만든 폴더 전부" · Q8 "함께 고친다" · 명세 "합의 — auto, 배포 전에 확인" | 구현 차례 시작 — 이 워커가 진행(PM). push · PR · 병합 · deploy 는 하지 않는다. 상태파일(읽기만): SPEC=1 · MODE=auto · TASK_PATH=이 폴더 |
 | 11-27 16:02 | 브랜치: 구현이 들어가므로 같은 커밋(`1aadde2`)에서 `feat/close-out-requirement-check` 를 만들어 옮김 | `docs/close-out-requirement-check` 는 `1aadde2` 에 그대로 남는다 |
 | 11-27 16:02 | **load-bearing 가정 1 확인**(배포본을 건드리지 않고): 이 워커(서브에이전트)가 TASK_PATH 의 `log.md` 를 offset · limit 없이 Read → 배포된 `reread-track.sh`(작업 트리와 같음 — diff 확인)는 agent_id 가 없을 때만 `<sid>.reread` 에 기록한다. 다른 조건(도구 Read · 전체 읽기 · 이름 log.md · TASK_PATH 일치 · reread-seen 있음)은 모두 맞다 | `.reread` 의 마지막 기록이 11-22 그대로(mtime 02:24) → **서브에이전트의 PostToolUse(Read) 입력에 agent_id 가 실린다**. Write 의 PostToolUse 는 같은 공통 칸이라 실릴 것으로 본다(추론) — Write 에서의 직접 확인은 배포 뒤 smoke(task 07, 사용자)로 넘긴다. 부작용: 없음(기록이 안 됐으므로 메인의 재독 상태는 그대로) |
+| 11-27 16:0x | 기준 훅 테스트(`run.sh`) 첫 시도 — 작업 트리에서 돌리는 중 워커가 파일을 고치고 메인이 커밋해 hermetic 스냅샷이 달라짐(출력은 `| tail` 로 잘려 수를 못 셈 — 그린 위장의 꼴이라 무효로 침) | 깨끗한 기준 작업 트리 `…/scratchpad/wt/harness-base`(`7688bad` detached)에서 다시 돌림 |
+| 11-27 16:07 | task 01+02 구현 워커(Opus 155k — 한 워커가 차례로) 회수 | 범위 = 파일 다섯(core · task-units · 두 템플릿 · README) +19 −7 · core **15,346자**(README 절 이름이 실제로 `repo 구조` 라 제안보다 +7) · task-units **80줄** · 표지 · 머리 줄 `grep -nxF` 일치. 워커가 낸 갈림 둘: ① 절 이름 — 받음 ② 긴급(DEBT=1)이 앞선다는 말이 문장에 없음(rule-docs 규칙 3) — 넣게 함(같은 워커 이어서 · 80줄 유지) |
+| 11-27 16:08 | 커밋: task 01 `0b87e2d`(core 새 줄만 hunk 로 골라 stage) · task 02 `2e55217` | 리뷰 묶음: t01 base `77ba594`..`0b87e2d` · t02 base `0b87e2d`..`2e55217` · `$OUT` = `…/scratchpad/rv/t01-l1` · `rv/t02-l1`(미러 = `git archive` · ledger·decisions 제외 · 보안 스캔 매칭 = `hooks/tests/cases/codex-scan.sh` 의 가짜 키 픽스처뿐 — 오탐) · codex 둘 시작 · Opus 리뷰어 t01 시작 |
+| 11-27 16:1x | t01 루프 1: Opus 리뷰(120k · 지적 6) ∥ codex(지적 2 · 16:10) · t02 루프 1: codex(지적 2 · 16:10) — Opus 는 차례로 | 종합 → ledger. 채택 t01 여섯(1 · 2 · 4 · 5 · 6 · 7) · 기각 t01-3(02 가 바로 뒤 커밋) · t02 기각 1 · 채택 1(Opus t02 결과를 본 뒤 함께 고침) |
+| 11-27 16:13 | t02 루프 1 Opus 리뷰(101k — 지적 2, 둘 다 낮음 · codex 둘과 같은 내용) 회수 · 리뷰 반영 워커(Opus) 시작 — t01 채택 여섯 + t02-c2 | Opus 지적 1 = codex D2(채택에 합침) · 2 = codex D1(기각 그대로 — Opus 도 "사용자가 고른 옮김 · 선례 있음 · 남는 한계로 log 한 줄"로 봄). 남는 한계: 배포본에서는 README 를 열 수 없다(core 가 README 를 가리키는 다른 곳과 같다) |
+| 11-27 16:13 | 기준 훅 테스트(깨끗한 작업 트리 `7688bad`) | **436 통과 · 실패 0 · 건너뜀 0**. 첫 시도가 무효였던 까닭: `run.sh` 의 hermetic 검사가 저장소의 HEAD · status 를 앞뒤로 견준다 — 워커가 파일을 고치는 동안 돌리면 깨진다. 앞으로 테스트는 워커가 쓰지 않을 때만 돌린다 |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -33,13 +39,41 @@
 |------|------|------|----------------|------------------|
 | 11-27 15:28 | — | 작업 트리의 base 를 로컬 `main` 대신 `origin/main` 으로 | 지시의 뜻(기본 브랜치의 끝에서 시작)과 같고, 브랜치를 지우고 다시 만들면 되돌릴 수 있다 | 예 — 줄 번호 · 글자 수가 이 판 기준 |
 
+## 옮김 대조표 (task 02 — `writing/rule-docs.md` 규칙 6 · 원래 위치는 모두 core §6 110행 · 워커 packet 16:07 · 메인과 t02 Opus 리뷰어가 미러에서 다시 확인)
+
+| 원래 내용 | 옮긴 뒤 위치 |
+|---|---|
+| `git-guard`(push ask · 커밋/gh 발행 attribution 차단) | README 186행 |
+| `codex-scan`(시크릿 backstop) | README 187행 |
+| `gate-guard`(C1 · C2 · SPEC/MODE 게이트 · 고정 지시 파일 쓰기 ask · 작업 폴더당 1회 알림(차단 아님)) | README 180행(C2 · ask · 알림은 이번에 더함) |
+| `session-mode-guard` · `reinject-mode` · `task-mode-guard`(spec · log 리셋) | README 184 · 185 · 183행 |
+| `detect-layer`(관측 전용 · `.events` · 차단 없음) | README 188행("관측 전용") |
+| `capture-decision` · `reread-track` | README 189 · 190행 |
+| "배포 단일 출처 = 이 repo" · 테스트 `hooks/tests/run.sh` | core 에 남김 |
+| "활성"이라는 구분(아홉만 등록된 훅) | README `hooks/` 줄 주석(리뷰 반영 t02-c2) |
+
 ## 고장 내기
 
 해당 없음 — 테스트 코드가 없는 L0 기록.
 
 ## 리뷰 ledger
 
-이번 차례는 리뷰를 돌리지 않았다(산출물 = 기록 · 초안 · 제안. 리뷰는 합의 뒤 적용 차례에서 명세 5절대로).
+준비 차례(1 · 2)는 리뷰를 돌리지 않았다. 아래는 구현 차례.
+
+- review packet: t01 루프 1 — base `77ba594` / 리뷰한 SHA `0b87e2d` / `$OUT` = `…/scratchpad/rv/t01-l1` / 미러 = 같은 폴더 `mirror/`
+- review packet: t02 루프 1 — base `0b87e2d` / 리뷰한 SHA `2e55217` / `$OUT` = `…/scratchpad/rv/t02-l1` / 미러 = 같은 폴더 `mirror/`
+
+| id | task | first_seen_loop | source | 근거(file:line) | repro | impact | need | disposition | status | fixed_in_loop |
+|----|------|-----------------|--------|-----------------|-------|--------|------|-------------|--------|---------------|
+| t01-1 | 01 | 1 | opus | templates/log.md:22,24 · task-units.md:45 — "그 task의 표에도 옮긴다"가 task 마다 표를 만들게 읽힘 → 파서는 표지 뒤 첫 표 하나만 읽어 둘째 표부터 조용히 놓침 | 코드로만 확인 — ① 문서 | 검증 | 반드시 필요 | 채택 — (4) 명세 6.1 ①(표 하나) · 2절(놓치지 않음)에 어긋남 | open | |
+| t01-2 | 01 | 1 | opus | task-units.md:45 · requirement-spec.md:93 — task 로 나누지 않은 작업에서 표를 만드는지 없음 | 코드로만 확인 — ① 문서 | 검증 | 반드시 필요 | 채택 — (4) 분기 답 Q2 "모든 task" | open | |
+| t01-3 | 01 | 1 | opus | src/core.md:75 — task 01 커밋의 core 가 15,730자(상한 초과) | 코드로만 확인 — ① 문서(실측) | 계약 | 있으면 좋다 | 기각 — 바로 뒤 커밋 `2e55217`(task 02)에서 15,346자. 명세 9절 차례 문장 "앞당겨도 된다"대로 02 를 01 바로 뒤에 둠 · 배포는 07 이라 배포본이 상한을 넘는 일 없음 | closed | |
+| t01-4 | 01 | 1 | opus | task-units.md:45,50,53 — task 를 다시 열 때 줄을 `열림`으로 되돌리는 말이 없음 | 코드로만 확인 — ① 문서 | 검증 | 하면 좋다 | 채택 — (4) 닫음 표시가 다시 연 task 를 가리면 2절의 "빈 칸이 있으면 닫지 않는다"가 빈다 | open | |
+| t01-5 | 01 | 1 | opus · codex(C1) | src/core.md:75 — core 줄이 긴급(DEBT=1)의 예외 없이 "막는다"고 단정 | 코드로만 확인 — ① 문서 | 계약 | 반드시 필요 | 채택 — (4) 명세 2절 · 0절(긴급은 알림만)과 상시 문서가 어긋남 | open | |
+| t01-6 | 01 | 1 | opus | templates/log.md:5,24 · core §7 — log append 규칙과 표의 제자리 고침이 부딪히는데 앞서는 쪽이 없음(rule-docs 규칙 3) | 코드로만 확인 — ① 문서 | 문서 | 하면 좋다 | 채택 — (4) 같은 줄을 `닫음`으로 덧붙이면 옛 `열림` 줄이 남아 알림이 계속됨 | open | |
+| t01-7 | 01 | 1 | codex(C2) | templates/log.md:25 — 빈 칸 정의에 공백뿐인 칸이 없음 | 코드로만 확인 — ① 문서 | 문서 | 하면 좋다 | 채택 — (4) 명세 6.1 ① 의 빈 칸 정의와 템플릿이 어긋남 | open | |
+| t02-c1 | 02 | 1 | codex(D1) · opus(2) | src/core.md:111 · hooks/deploy.sh:18 — README 는 배포되지 않아 다른 프로젝트 세션에서 가리킴이 풀리지 않음 | 미실행 — 기각 | 계약 | 있으면 좋다 | 기각 — (1) 사용자가 이 옮김을 골랐다(분기 Q4) · core 는 이미 README 를 가리킨다(§0.2 "세는 법 = README" · §5 "README '실측' 절") — 같은 설계. 훅 목록은 모델이 따를 행동이 아니라 색인이고 행동 규칙은 core §1 · §6 · §7 에 남음 | closed | |
+| t02-c2 | 02 | 1 | codex(D2) · opus(1) | README.md:179-192 · src/core.md:111 — README 의 `hooks/` 트리에는 라이브러리 · CLI · 배포 · 테스트도 같이 있어 "활성 훅"의 구분이 사라짐 | 코드로만 확인 — ① 문서 | 문서 | 하면 좋다 | 채택 — (4) 옮김 대조(명세 2절 — 옮긴 뒤 위치가 빈 것 0)에서 "활성"이라는 구분이 옮겨지지 않음 | open | |
 
 ## 생략한 검증
 
