@@ -177,7 +177,7 @@ v4.8은 구현 주체를 core §5에 정했다. stakes 중간·높음의 L1(실�
 ├── agents/
 │   └── explorer.md            #   탐색 전담 서브에이전트(Sonnet·Read/Grep/Glob만) — core §5 탐색 위임 (v4.3, deploy 대상 — ~/.claude/agents 는 repo가 정본)
 ├── hooks/                     # 강제 계층 (배포: bash hooks/deploy.sh)
-│   ├── gate-guard.sh          #   L0/L1 판별(C1) + SPEC→MODE 게이트 + lazy per-diff 차단
+│   ├── gate-guard.sh          #   L0/L1 판별(C1·C2) + SPEC→MODE 게이트 + lazy per-diff 차단 + 고정 지시 파일 쓰기 ask + 메인의 L1 직접 쓰기에 작업 폴더당 1회 알림(차단 아님)
 │   ├── state-lib.sh           #   상태 SCHEMA=4 (MODE·SPEC·PENDING_GATE·DEBT·TASK_PATH) — flock 원자쓰기·quarantine · 경로 해소(조상 앵커→git 워크트리 루트→cwd) · 자기무시 .gitignore 보장(rc 0/1/2/3)
 │   ├── set-state.sh           #   상태 기록 유일 경로 CLI (mode | spec-approved | emergency | debt-clear | gate-pass)
 │   ├── task-mode-guard.sh     #   새 작업 폴더(spec·log 생성) → SPEC·MODE 리셋 (DEBT 는 유지 — 크로스-태스크 빚)
