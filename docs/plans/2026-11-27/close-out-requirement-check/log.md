@@ -75,6 +75,7 @@
 | 11-28 03:02 | task 05 구현 워커(Opus 131k) 회수 — 사본에서 | 바뀐 것 둘(task-mode-guard +21 · state-lib `state_reqcheck_remember` +41) · 테스트 · lock 그대로(`diff -rq` 로 범위 확인). patch = `…/scratchpad/harness-t05/t05-impl.patch`(테스트 patch 와 따로). **메인 재실행**(사본의 새 사본 `harness-t05/verify`) **569 통과 · 0 실패 · 0 건너뜀**. **메인 고장 내기**(`harness-t05/mb-broken`): task-mode-guard.sh:43 의 `[ -z "$AGENT_ID" ] || exit 0` 을 `:` 로(cmp 43행) → 워커의 log.md Write: 원본 SPEC=1 · MODE=auto 그대로 · 사이드카 없음 / 고장 사본 MODE=UNSET · SPEC=0 · 사이드카 생김(사고 그대로) — a01~a05 가 지키는 규칙. 워커가 든 살아남은 고장: 중복일 때 경고 없음을 지키는 테스트가 없다(리뷰에 넘김). 리뷰 루프 1(Opus 실행 ∥ codex — 사본 기준) 시작 |
 | 11-28 03:11 | t05 루프 1: Opus(실행 · 103k) ∥ codex — **둘 다 지적 없음** | **task 05 닫음**(사본 기준). 후보 하나(t05-1 테스트 공백). 게이트(상태파일 읽기)가 열려 있지 않으면 patch 둘(`t05-tests.patch` · `t05-impl.patch`)을 남기고 task 06 으로 |
 | 11-28 03:13 | task 06(낮음 — 메인이 직접 · 사본에서): README 구조 절 훅 줄 셋(gate-guard · task-mode-guard · reinject) · 새 절 "요구 대조 (v4.10)"(무엇을 하나 · 푸는 길 · 못 보는 것 아홉 · 근거) · README 이력 v4.10 · HISTORY 한 줄 · 명세 ② 의 테스트 이름 표를 실제 영문 이름으로(작업 트리 docs — L0) | 셀프체크: README 의 사실(표지 둘 이상 · 긴급은 알림 · 사이드카는 사용자가 고침 · 끄는 길 없음)을 훅 코드와 대조 · 표의 이름 넷을 grep 으로 확인. patch = `harness-t05/t06-docs.patch` · 05 와 06 을 합친 patch = `harness-t05/t05-t06-all.patch`(파일 8). **게이트 닫힘(상태파일 SPEC=0 · MODE=UNSET · TASK_PATH=study-note) — 작업 트리 적용 · 커밋은 열린 뒤**. core 15,370자 · task-units 80줄 |
+| 11-28 12:01 | (메인 전달) 게이트 열림 — 사용자가 set-state 를 직접 실행(상태파일 읽기: SPEC=1 · MODE=auto · DEBT=0) | patch 셋을 작업 트리에 차례로 적용(`patch -p1` — dry-run 먼저) → 커밋 test `3fa929b` · fix `07c8ea6` · docs `4dabf83` · 적용한 파일이 사본과 `cmp` 로 같음. **메인 재실행(깨끗한 작업 트리 `4dabf83`) 569 통과 · 0 실패 · 0 건너뜀**. task 05 · 06 닫음 |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -98,6 +99,20 @@
 | `capture-decision` · `reread-track` | README 189 · 190행 |
 | "배포 단일 출처 = 이 repo" · 테스트 `hooks/tests/run.sh` | core 에 남김 |
 | "활성"이라는 구분(아홉만 등록된 훅) | README `hooks/` 줄 주석(리뷰 반영 t02-c2) |
+
+## 요구 대조 (이 작업 자신 — 새 규칙을 먼저 써 봄)
+
+<!-- req-check:v1 -->
+| task | 원문 위치 | 요구 | 만든 곳 / 넘긴 곳 | 상태 |
+|---|---|---|---|---|
+| T01 | 명세 9절 task 01 | core §4 한 줄 · task-units §3 · log 템플릿 표 · 명세 템플릿 9절 결과 칸 | `0b87e2d` … `a44da7a`(리뷰 루프 8 · 읽기 시험) | 닫음 |
+| T02 | 명세 9절 task 02 | core §6 활성 훅 목록 → README · core 에는 가리키는 줄 | `2e55217` · `8acc2b7` · `cbb2cf3` | 닫음 |
+| T03 | 명세 9절 task 03 · 6.1 ① | state-lib 의 표 파서와 테스트 | `8061aa2` … `2b6fb33`(hooks/state-lib.sh `state_reqcheck_scan` · tests/cases/req-check.sh) | 닫음 |
+| T04 | 명세 9절 task 04 · 6.1 ② | 사이드카 읽기 · gate-guard 차단 · reinject 알림과 테스트 | `6e6b70c` · `38c2d23` · `1257b33` | 닫음 |
+| T05 | 명세 9절 task 05 · 진행 중 결정(사이드카 쓰기 이동) | task-mode-guard 가 워커의 Write 로 리셋하지 않음 · 사이드카 쓰기와 테스트 | `3fa929b` · `07c8ea6` | 닫음 |
+| T06 | 명세 9절 task 06 | README 의 훅 설명 · HISTORY · 버전 줄 · 명세 ② 의 테스트 이름 | `4dabf83` · `04e86b3` | 닫음 |
+| T07 | 명세 9절 task 07 | deploy.sh 로 배포 · 새 세션 smoke | | 열림 |
+
 
 ## 고장 내기
 
@@ -193,3 +208,14 @@
 - 된 것: 명세 2판(사용자의 답 셋 · 훅 설계 6.1 · 못 보는 것 6.2 · task 일곱 · 더 물을 것 Q6~Q8) · 제안 2판(훅 코드 제안과 테스트 사례 · core 15,339자) · 실측 기록 6절(덤 결함). 정책 파일 · 훅은 고치지 않았다.
 - 확인하지 않은 것과 알아야 할 위험: 제안한 훅 코드는 실행하지 않았다(awk 종류 · C 로캘의 한글 비교 · `exit` 뒤 `END` 는 [구현 검증]) · 서브에이전트의 PostToolUse(Write) 입력에 `agent_id` 가 실리는지(명세 8절 가정 1) · 리셋 때 훅이 낸 출력.
 - 뺀 것과 다시 더할 조건: git-guard push 승인 사유에 빈 칸 수(차단 · 알림이 있는데도 빈 칸을 둔 채 push 한 실측이 나오면) · 원문 줄 수의 기계 대조(잘린 출력이면 두 수가 같이 틀려 잡는 것이 없다 — 원문을 훅이 읽을 꼴이 생기면) · 압축 뒤 재독에 계약 문서.
+
+## 완료 요약 (구현 차례 — 11-28 12:01)
+
+- 된 것: task 01~06(규칙 문서 · 훅 목록 이동 · 표 파서 · gate-guard 차단과 reinject 알림 · task-mode-guard 의 워커 Write 무시와 사이드카 쓰기 · README · 이력). 마지막 재실행 569 통과 · 0 실패 · 0 건너뜀(기준 436). core 15,370자(상한 15,404) · task-units 80줄. **task 07(배포)은 하지 않았다 — 사용자 확인 뒤.**
+- 핵심 diff: core §4 에 "task를 닫기 전 요구 대조(실측 2026-11-27)" 한 줄(지금 `src/core.md:75` 의 글 그대로 — 최종 보고에 실음) · 훅 셋(state-lib · gate-guard · reinject) + task-mode-guard.
+- 배운 것: 같은 문장 · 같은 곳을 리뷰마다 고치는 일이 두 번 났다(원문 줄 수 대조 · 코드 펜스 짝 세기) — 둘 다 정지 규칙으로 멈추고 사용자에게 물어 설계를 뺐을 때 수렴했다. 테스트 이름은 영문이어야 한다(`run.sh` 이름 검사). 메인 재실행은 깨끗한 별도 작업 트리에서(TASK_PATH 의 decisions.md 가 hermetic 검사를 깬다).
+- 확인하지 않은 것과 알아야 할 위험: 서브에이전트의 PostToolUse(Write) 입력에 agent_id 가 실리는지(Read 는 확인 — 배포 뒤 smoke) · BSD awk · NFS 의 지연 · 펜스 안에 줄 전체 표지 예시를 둔 log 는 막힌다(사용자가 고른 대가).
+- 뺀 것과 다시 더할 조건: 원문 줄 수 대조(사용자 — 잘린 읽기에서 함께 틀림) · 코드 펜스 짝 세기(사용자 — 표지는 하나로) · git-guard push 사유에 빈 칸 수(차단 · 알림이 있는데도 빈 칸을 둔 채 push 한 실측이 나오면) · 압축 뒤 재독에 계약 문서(표를 log 에 둔 뒤에도 압축 뒤 요구를 잃은 실측이 나오면) · 검사를 끄는 스위치(두지 않음).
+- 더 나은 대안: 없음.
+- 이번 변경의 `단순화:` 주석: 없음(펜스 글자 수의 `단순화:` 는 펜스 코드와 함께 지워짐).
+- NEXT 로 옮긴 것: `docs/plans/NEXT.md` N15.
