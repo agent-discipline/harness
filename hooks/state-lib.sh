@@ -405,3 +405,157 @@ state_standing_print() {
       end
   ' 2>/dev/null || true
 }
+
+# ── v4.10 요구 대조 (close-out-requirement-check — 표의 꼴 정본 = templates/log.md "요구 대조" 절) ─────────
+# 표지 줄 다음의 첫 표 하나만 읽는다. log.md 는 **끝까지** 읽는다(줄 · 크기 상한 없음 — 절단이 이 방어선을 낳은 사고의 원인).
+#   줄마다 앞뒤 공백(줄 끝 \r 포함)을 무시하고 본다: 표지 줄 · 머리 줄은 글자 그대로, 표지와 머리 줄 사이 빈 줄은 건너뛴다,
+#   표의 줄 = `|` 로 시작하는 줄(들여씀 무관) — 빈 줄 · `|` 없는 줄에서 표가 끝난다(`|` 를 담았는데 `|` 로 시작하지 않으면
+#   판정 불가). 구분 줄은 칸마다 `-` 하나 이상(`:` 정렬 표기 허용). 칸은 다섯, 칸 안의 `\|` 는 경계가 아니다.
+#   상태 ∈ {열림, 닫음}(칸의 앞뒤 공백만 무시). 빈 칸 = 비었거나 공백뿐이거나 `-` · `—` · `?` 하나뿐.
+#   stdout(rc 0): `VIOLATION\t<task>\t<행>`(닫음 + 넷째 칸 빈 칸, 파일 차례) 다음 `OPEN\t<task>\t<빈 칸 수>\t<그 task 의 줄 수>`
+#     (열림 빈 칸이 있는 task 만, 처음 나온 차례).
+#   표지 줄 = 줄 전체(앞뒤 공백 · 탭 · \r 무시)가 표지인 줄 — 문장 안 인용(백틱 · `>`)은 표지가 아니다. 코드 펜스는 세지 않는다
+#   (펜스 짝 세기가 검사를 조용히 끄는 길을 냈다). 표지 줄이 둘 이상이면 판정 불가 — 그래서 꼴이 틀려도 파일 끝까지 센다.
+#   rc 1 = 판정 불가(심링크 · 비정규 · 읽기 불가 · 표지 줄 둘 이상 · 꼴 틀림 · 표지 뒤에 표 없음) — stdout = 까닭 한 줄
+#     (행 번호가 있으면 함께 — 표지 줄 둘 이상이면 첫째 · 둘째 표지 줄의 행). 표지 줄 둘 이상이 꼴 틀림보다 앞선다.
+#   rc 2 = 표지 없음 · 파일 없음(검사 대상 아님) — 출력 없음.
+#   awk 는 바이트로 비교한다 — 로캘(C 포함)과 mawk · gawk 에 관계없이 같은 결과.
+REQCHECK_MARKER='<!-- req-check:v1 -->'
+REQCHECK_HEADER='| task | 원문 위치 | 요구 | 만든 곳 / 넘긴 곳 | 상태 |'
+state_reqcheck_scan() { # <log.md> → rc 0 / 1 / 2
+  local f="${1:-}" out rc=0
+  [ -n "$f" ] || return 2
+  if [ ! -e "$f" ] && [ ! -L "$f" ]; then return 2; fi
+  { [ -f "$f" ] && [ ! -L "$f" ] && [ -r "$f" ]; } \
+    || { printf '%s\n' "log.md 를 읽을 수 없음(심링크 · 정규 파일 아님 · 권한): $f"; return 1; }
+  # awk 종료 코드: 0 판정함 · 1 판정 불가(까닭 출력) · 3 표지 없음 · 그 밖 = 읽기 실패(판정 불가).
+  out=$(_RQ_M="$REQCHECK_MARKER" _RQ_H="$REQCHECK_HEADER" awk '
+    function trim(s) { sub(/^[ \t\r]+/, "", s); sub(/[ \t\r]+$/, "", s); return s }
+    function blank(s) { s = trim(s); return (s == "" || s == "-" || s == "—" || s == "?") }
+    function die(m)  { if (!bad) why = m " (" NR "행)"; bad = 1; st = 4 }   # exit 하지 않는다 — 뒤의 표지 줄도 센다(부른 곳은 바로 next)
+    { line = trim($0); if (line == ENVIRON["_RQ_M"] && ++marks <= 2) mark_nr[marks] = NR }
+    st == 0 { if (line == ENVIRON["_RQ_M"]) st = 1; next }
+    st == 1 { if (line == "") next
+              if (line != ENVIRON["_RQ_H"]) { die("요구 대조 표의 머리 줄이 꼴과 다름"); next }; st = 2; next }
+    st == 2 { if (trim($0) !~ /^\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|[ :]*-[ :-]*\|$/) { die("요구 대조 표의 구분 줄이 꼴과 다름"); next }; st = 3; next }
+    st == 3 { line = trim($0)
+              if (substr(line, 1, 1) != "|") {                 # 빈 줄 · | 없는 글에서 표가 끝난다
+                if (index(line, "|")) { die("요구 대조 표의 줄이 | 로 시작하지 않음"); next }
+                st = 4; next }
+              gsub(/\\\|/, "\001", line)                     # 칸 안의 \| 는 경계가 아니다
+              if (length(line) < 2 || substr(line, length(line)) != "|") { die("요구 대조 표의 줄이 | 로 끝나지 않음"); next }
+              n = split(substr(line, 2, length(line) - 2), c, "|")
+              if (n != 5) { die("요구 대조 표의 칸 수가 5가 아님: " n); next }
+              t = trim(c[1]); s = trim(c[5])
+              if (t == "") { die("요구 대조 표의 task 칸이 빔"); next }
+              if (s != "열림" && s != "닫음") { die("요구 대조 표의 상태가 열림 · 닫음이 아님: " s); next }
+              if (!(t in total)) order[++k] = t
+              total[t]++
+              if (blank(c[4])) { if (s == "닫음") viol[++v] = t "\t" NR; else open_n[t]++ }
+              next }
+    END { if (marks >= 2) { print "요구 대조 표지 줄이 둘 이상 — log 에 하나만 둔다 (" mark_nr[1] "행 · " mark_nr[2] "행)"; exit 1 }
+          if (bad) { print why; exit 1 }
+          if (st == 0) exit 3
+          if (st < 3) { print "요구 대조 표지 뒤에 표가 없음"; exit 1 }
+          for (i = 1; i <= v; i++) print "VIOLATION\t" viol[i]
+          for (i = 1; i <= k; i++) if (open_n[order[i]] > 0) print "OPEN\t" order[i] "\t" open_n[order[i]] "\t" total[order[i]] }
+  ' "$f" 2>/dev/null) || rc=$?
+  case "$rc" in
+    0) [ -z "$out" ] || printf '%s\n' "$out"; return 0 ;;
+    1) printf '%s\n' "${out:-요구 대조 표 판정 불가: $f}"; return 1 ;;
+    3) return 2 ;;
+    *) printf '%s\n' "log.md 읽기 실패(awk rc $rc): $f"; return 1 ;;
+  esac
+}
+
+# 요구 대조가 읽을 log.md 목록 — TASK_PATH 먼저, 그다음 사이드카 <sid>.req-check-paths 의 줄(작업 폴더 하나씩)의 차례대로.
+#   stdout(rc 0): 줄마다 `<작업 폴더>/log.md`. 같은 폴더(글자 그대로 같은 줄)는 처음 것만 · 빈 줄은 건너뛴다 · 끝 개행 없는
+#   마지막 줄도 읽는다. task_path 가 비고 사이드카가 없으면 출력 없음. 폴더 · log 가 있는지는 보지 않는다(판정은 scan — rc 2).
+#   rc 1 = 사이드카 판정 불가(심링크 · 정규 파일 아님 · 읽기 불가 · 절대 경로가 아닌 줄 — 손상을 조용히 건너뛰지 않는다)
+#     — stdout = 사이드카 경로 한 줄. 호출부는 판정 불가로 다루되 TASK_PATH 의 log 는 따로 읽는다.
+#   사이드카에 쓰는 쪽은 task-mode-guard(메인이 Write 로 만든 작업 폴더). 경로는 ENVIRON 으로(-v 는 역슬래시를 해석한다).
+state_reqcheck_paths() { # <state_dir> <sid> <task_path> → rc 0 / 1
+  local dir="${1:-}" sid="${2:-}" tp="${3:-}" sidecar out
+  sidecar="$dir/$sid.req-check-paths"
+  if [ -z "$sid" ] || { [ ! -e "$sidecar" ] && [ ! -L "$sidecar" ]; }; then
+    [ -z "$tp" ] || printf '%s/log.md\n' "$tp"
+    return 0
+  fi
+  { [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]; } || { printf '%s\n' "$sidecar"; return 1; }
+  # awk 는 main 의 exit 뒤에도 END 를 돈다 — 손상이면 END 에서 1. 출력은 성공했을 때만 내보낸다.
+  out=$(_RP_T="$tp" awk '
+    BEGIN { tp = ENVIRON["_RP_T"]; if (tp != "") { seen[tp] = 1; print tp "/log.md" } }
+    $0 == "" { next }
+    substr($0, 1, 1) != "/" { bad = 1; exit }
+    !($0 in seen) { seen[$0] = 1; print $0 "/log.md" }
+    END { if (bad) exit 1 }
+  ' "$sidecar" 2>/dev/null) || { printf '%s\n' "$sidecar"; return 1; }
+  [ -z "$out" ] || printf '%s\n' "$out"
+}
+
+# 위 사이드카에 쓰는 쪽(task-mode-guard — 메인이 Write 로 쓴 작업 폴더) — 이름 · 줄의 꼴(절대 경로 폴더 한 줄)을 읽는 쪽과 여기서 맞춘다.
+#   이미 있는 줄(글자 그대로)이면 무변경. 잠금 · 임시 파일 → mv · 심링크 · 비정규 거부 = gate-guard worker_notice 사이드카 관례
+#   (잠금 파일은 없을 때만 배타 생성 · 읽기 전용으로 연다). 끝 개행 없는 기존 파일에는 개행을 먼저 보탠다(두 줄이 붙지 않게).
+#   rc 0 = 더함 또는 이미 있음 · 1 = 잠금 실패 · 2 = 사이드카 판정 불가(심링크 · 비정규 · 읽기 불가) 또는 준비 실패 · 3 = 확정(mv) 실패
+#      · 4 = 줄이 될 수 없는 폴더(빈 값 · 상대 경로 · 개행 포함) 또는 빈 sid · 5 = 상태 디렉토리 확보 실패(STATE_ENSURE_REASON).
+#   출력 없음(경고는 호출부). `||` 문맥에서 불린다(set -e 무시) — 단계마다 실패를 명시 검사한다.
+state_reqcheck_remember() { # <state_dir> <sid> <작업 폴더> → rc 0~5
+  local dir="${1:-}" sid="${2:-}" folder="${3:-}" sidecar directory_rc=0
+  case "$folder" in /*) ;; *) return 4 ;; esac
+  case "$folder" in *$'\n'*) return 4 ;; esac
+  [ -n "$sid" ] || return 4
+  sidecar="$dir/$sid.req-check-paths"
+  state_ensure_dir "$dir" || directory_rc=$?
+  case "$directory_rc" in 0|3) ;; *) return 5 ;; esac
+  (
+    lock="$sidecar.lock"
+    if [ ! -e "$lock" ] && [ ! -L "$lock" ]; then ( set -C; : > "$lock" ) 2>/dev/null || true; fi
+    { [ -f "$lock" ] && [ ! -L "$lock" ]; } || exit 1
+    exec 9<"$lock" || exit 1
+    { [ -f "$lock" ] && [ ! -L "$lock" ]; } || exit 1
+    if [ -e /proc/self/fd/9 ]; then [ "$lock" -ef /proc/self/fd/9 ] || exit 1; fi
+    flock -x -w 2 9 || exit 1
+    if [ -e "$sidecar" ] || [ -L "$sidecar" ]; then
+      { [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]; } || exit 2   # 그 너머로 읽거나 쓰지 않는다
+      seen_rc=0; grep -qxF -- "$folder" "$sidecar" || seen_rc=$?
+      [ "$seen_rc" = 0 ] && exit 0
+      [ "$seen_rc" = 1 ] || exit 2                    # rc 2 = 읽기 실패("없음"으로 보지 않는다)
+    fi
+    temporary_file=$(mktemp "$dir/.req-check-paths.XXXXXX") || exit 2
+    if [ -e "$sidecar" ]; then
+      cat -- "$sidecar" > "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }
+      if [ -s "$sidecar" ]; then
+        last_byte=$(tail -c 1 -- "$sidecar") || { rm -f -- "$temporary_file"; exit 2; }
+        if [ -n "$last_byte" ]; then printf '\n' >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }; fi
+      fi
+    fi
+    printf '%s\n' "$folder" >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }
+    mv -fT -- "$temporary_file" "$sidecar" || { rm -f -- "$temporary_file"; exit 3; }
+  ) 2>/dev/null
+}
+
+# 요구 대조의 찾은 것 — gate-guard(차단) · reinject-mode(알림)가 함께 쓴다. 읽을 log 마다 파서를 **한 번만** 부른다
+#   (매 L1 쓰기 · 매 턴 도는 길 — 폴더가 여럿이고 log 가 커도 파일을 두 번 읽지 않는다).
+#   stdout(늘 rc 0 — 판정 불가도 줄로 낸다): 탭으로 가른 줄. 찾은 것이 없으면(표지 없음 · 위반도 열린 빈 칸도 없음) 출력 없음.
+#     `VIOLATION\t<log>\t<task>\t<행>` · `OPEN\t<log>\t<task>\t<빈 칸 수>\t<줄 수>` · `UNDECIDABLE\t<log 또는 사이드카>\t<까닭>`
+#   사이드카 판정 불가(paths rc 1)면 그 줄을 내고 TASK_PATH 의 log 는 그대로 읽는다(사이드카 손상이 TASK_PATH 위반을 가리지 않게).
+#   파서 rc 2(표지 없음 · 파일 없음 — 사라진 폴더 포함)는 건너뛴다.
+state_reqcheck_findings() { # <state_dir> <sid> <task_path>
+  local paths paths_rc=0 log_file out scan_rc line
+  paths=$(state_reqcheck_paths "${1:-}" "${2:-}" "${3:-}") || paths_rc=$?
+  if [ "$paths_rc" != 0 ]; then
+    printf 'UNDECIDABLE\t%s\t%s\n' "$paths" "요구 대조 사이드카를 읽을 수 없음(심링크 · 정규 파일 아님 · 권한 · 절대 경로가 아닌 줄)"
+    paths=""; [ -z "${3:-}" ] || paths="$3/log.md"
+  fi
+  while IFS= read -r log_file; do
+    [ -n "$log_file" ] || continue
+    scan_rc=0; out=$(state_reqcheck_scan "$log_file") || scan_rc=$?
+    case "$scan_rc" in
+      0) while IFS= read -r line; do   # `<종류>\t<나머지>` → 종류 뒤에 log 경로를 끼운다
+           [ -z "$line" ] || printf '%s\t%s\t%s\n' "${line%%$'\t'*}" "$log_file" "${line#*$'\t'}"
+         done <<< "$out" ;;
+      1) printf 'UNDECIDABLE\t%s\t%s\n' "$log_file" "$out" ;;
+    esac
+  done <<< "$paths"
+  return 0
+}

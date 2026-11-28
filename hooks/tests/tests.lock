@@ -7,11 +7,19 @@ dbb769f9ba80c4318fa9b4278328373249d990124dc18f87834a19d34791fe04  cases/detect-l
 e7182d053acbe1edb76e96824d0a21fb027c0c63d527598b1862091e866c9042  cases/gate-guard.sh
 b8f9275979d0bddaad36acc8ccc418fb5c97ce48c5520982edb82d6ef167466b  cases/git-guard.sh
 e2f784d96758c2257ef81e4d524d9e0412808385e99305095a269e9d9dcc0585  cases/misc-guards.sh
+18189d46523ebea113f61beba895e5d207ea0d6166607d6d3731795e675a5660  cases/req-check-gate.sh
+cfa16c7f4d638ce37d9a94a6df8d302bbf32c350be93c80c3294c0d3ec12a98b  cases/req-check-writer.sh
+6bc72a4f5f814aaa5fc66dc619b111d6a4baafdf48dc41f62253c64ef1b94b4b  cases/req-check.sh
 4a8d45155c4c337e8dca574a8e6b3230188b627fc9664c04e34956624f1c1b1e  cases/sidecar-docsroot.sh
 90897bfb9e7914f528fb039a2d6a31d2263a7e03faa0498dd8fbb25bbd4c52a3  cases/state-schema.sh
 743be2a1d315b3d1d75ca0c75d1ccbbb8e4e34cefcd5816c6929794375628444  cases/worker-notice.sh
 0e455c60201dc0d2d6eef74dd569298a2b7ac92a33b8094850b616382bee2f3b  fixtures/legacy-2f07fb0/gate-guard.sh
 8e4a126b122c216e10d1a6c3f983e2e7554fadeff4cf674f6a31956f8eaa6478  fixtures/legacy-2f07fb0/state-lib.sh
+cdf91e11d8b708f66f2ad0e0abe6168e969118ab13dc78399a3d593433aa0c22  fixtures/legacy-d38839a/state-lib.sh
+bd67a1b779f0449d35c5b5f95c85fa30573d840a457c088a995de79918c46464  fixtures/legacy-d38839a/task-mode-guard.sh
+9954e8aa3fb8768c7695b71bc670158100ff977a509cd27982c3cd70f9ec1ce9  fixtures/legacy-d42c6a9/gate-guard.sh
+a4f6fefd798dca2c2fbd489036a95e29c1ba1a8e2411ab4c40df1e9e67480e94  fixtures/legacy-d42c6a9/reinject-mode.sh
+52e63ceb59660269013f52f1c2756d6c25cac819e8088cd32e0ccf65da03c5fb  fixtures/legacy-d42c6a9/state-lib.sh
 871fa929280f913be86d4e167604b7cee135b512dbe6440c9ac9248f1c252e45  fixtures/legacy/reinject-mode.sh
 43a969b2e2169e61b1fbe03aee145b18b9a8a516d581e827fa680fdc49130642  fixtures/legacy/session-mode-guard.sh
 d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legacy/state-lib.sh
@@ -320,6 +328,56 @@ d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legac
 # test: test_gt_60
 # test: test_gt_60b
 # test: test_gt_60c
+# test: test_rg_a01_task_path_only_gives_its_log
+# test: test_rg_a02_task_path_first_then_sidecar_lines_in_order
+# test: test_rg_a03_duplicates_keep_first_occurrence_only
+# test: test_rg_a04_blank_lines_skipped_and_last_line_without_newline_read
+# test: test_rg_a05_empty_task_path_reads_only_sidecar
+# test: test_rg_a06_nothing_gives_no_output_rc0
+# test: test_rg_a07_path_with_spaces_is_kept_whole
+# test: test_rg_a08_symlinked_sidecar_is_rc1_with_sidecar_path
+# test: test_rg_a09_non_regular_sidecar_is_rc1_with_sidecar_path
+# test: test_rg_a10_unreadable_sidecar_is_rc1_with_sidecar_path
+# test: test_rg_a11_relative_line_is_rc1_not_skipped
+# test: test_rg_a12_sidecar_of_other_session_is_not_read
+# test: test_rg_b01_closed_blank_in_task_path_log_blocks_l1_write
+# test: test_rg_b02_edit_and_multiedit_are_blocked_too
+# test: test_rg_b03_worker_write_is_blocked_too
+# test: test_rg_b04_lazy_mode_is_blocked_too
+# test: test_rg_b05_lazy_pending_is_blocked_by_reqcheck_first
+# test: test_rg_b06_bad_header_blocks_with_reason_path_and_expected_header
+# test: test_rg_b07_bad_status_blocks_with_reason_value
+# test: test_rg_b08_violation_in_second_sidecar_folder_blocks
+# test: test_rg_b09_violations_in_every_folder_are_all_reported
+# test: test_rg_b10_same_folder_in_task_path_and_sidecar_reported_once
+# test: test_rg_b11_blank_lines_no_trailing_newline_spaced_path_in_sidecar
+# test: test_rg_b12_symlinked_sidecar_blocks_and_still_shows_task_path_violation
+# test: test_rg_b13_broken_sidecar_blocks_even_without_any_marked_log
+# test: test_rg_b14_unreadable_marked_log_blocks
+# test: test_rg_b15_gone_folder_and_unmarked_logs_do_not_block
+# test: test_rg_b16_debt_violation_passes_with_one_context_json
+# test: test_rg_b17_debt_worker_and_lazy_pass_with_one_context_json
+# test: test_rg_b18_debt_undecidable_passes_with_reason_in_context
+# test: test_rg_b19_no_marked_log_output_same_as_legacy
+# test: test_rg_b20_open_blanks_only_output_same_as_legacy
+# test: test_rg_b21_post_and_bash_unchanged_with_violation
+# test: test_rg_b22_writing_log_md_itself_passes_with_violation
+# test: test_rg_b23_spec_and_mode_gates_unchanged_with_violation
+# test: test_rg_b24_state_file_refusal_and_standing_ask_unchanged_with_violation
+# test: test_rg_b25_filling_the_cell_unblocks
+# test: test_rg_b26_broken_sidecar_howto_asks_user_to_fix_it
+# test: test_rg_b27_debt_writes_one_stderr_line_with_violation_count
+# test: test_rg_c01_violation_gives_one_line_with_tasks_and_lines
+# test: test_rg_c02_open_blanks_one_line_task_blank_over_rows_across_folders
+# test: test_rg_c03_open_blanks_show_five_tasks_then_rest_count
+# test: test_rg_c04_exactly_five_tasks_have_no_rest_count
+# test: test_rg_c05_violation_line_comes_before_open_line
+# test: test_rg_c06_undecidable_gives_one_line_with_reason
+# test: test_rg_c07_broken_sidecar_gives_undecidable_line
+# test: test_rg_c08_same_folder_twice_is_counted_once
+# test: test_rg_c09_debt_still_shows_reqcheck_lines
+# test: test_rg_c10_standing_instructions_stay_last
+# test: test_rg_c11_no_findings_output_same_as_legacy
 # test: test_rm_01
 # test: test_rm_02
 # test: test_rm_03
@@ -329,6 +387,89 @@ d69ad2083550f70bc7b10def90ccefad741afc5e19202317d946d6ad8e236fd5  fixtures/legac
 # test: test_rm_07
 # test: test_rm_08
 # test: test_rm_09
+# test: test_rq_p01_log_without_marker_is_not_checked
+# test: test_rq_p02_filled_table_reports_nothing
+# test: test_rq_p03_open_row_with_blank_counts_per_task
+# test: test_rq_p04_closed_row_with_blank_is_violation_with_file_line
+# test: test_rq_p04c_closed_row_violation_same_in_c_locale
+# test: test_rq_p05_single_dash_emdash_question_space_are_blank_x_is_filled
+# test: test_rq_p05b_blank_kinds_count_in_open_rows
+# test: test_rq_p05c_blank_kinds_same_in_c_locale
+# test: test_rq_p06_escaped_pipe_is_not_a_cell_boundary
+# test: test_rq_p07_header_mismatch_is_undecidable_with_line
+# test: test_rq_p08_unknown_status_value_is_undecidable
+# test: test_rq_p09_four_cells_is_undecidable
+# test: test_rq_p09b_six_cells_is_undecidable
+# test: test_rq_p10_marker_without_table_is_undecidable
+# test: test_rq_p11_table_after_200kb_is_still_read
+# test: test_rq_p12_symlinked_log_is_undecidable
+# test: test_rq_p12b_missing_log_is_not_checked
+# test: test_rq_p13_only_first_table_after_marker_is_read
+# test: test_rq_p13b_table_ends_at_non_pipe_text_line
+# test: test_rq_p14_empty_table_reports_nothing
+# test: test_rq_p14b_log_template_as_is_reports_nothing
+# test: test_rq_p15_quoted_marker_text_is_not_a_marker
+# test: test_rq_p16_open_lines_follow_first_appearance_with_per_task_counts
+# test: test_rq_p17_violations_come_before_open_lines
+# test: test_rq_p18_marker_and_header_ignore_surrounding_spaces
+# test: test_rq_p19_header_without_separator_is_undecidable
+# test: test_rq_p20_blank_lines_between_marker_and_header_are_skipped
+# test: test_rq_p21_crlf_log_gives_same_result_as_lf
+# test: test_rq_p22_unreadable_log_is_undecidable
+# test: test_rq_p23_indented_table_lines_are_table_lines
+# test: test_rq_p24_escaped_pipe_in_fourth_cell_is_filled
+# test: test_rq_p25_bold_status_is_undecidable
+# test: test_rq_p25b_status_surrounding_spaces_are_ignored
+# test: test_rq_p26_marker_line_inside_fence_counts_so_two_markers_are_undecidable
+# test: test_rq_p26b_quoted_marker_inside_tilde_fence_is_not_a_marker
+# test: test_rq_p27_separator_cells_need_a_dash
+# test: test_rq_p28_row_without_leading_pipe_right_after_table_is_undecidable
+# test: test_rq_p29_header_then_eof_is_undecidable
+# test: test_rq_p30_lone_marker_inside_unclosed_fence_is_judged
+# test: test_rq_p30b_fences_around_a_single_marker_do_not_change_the_result
+# test: test_rq_p30c_lone_marker_inside_closed_fence_is_the_marker
+# test: test_rq_p31_three_marker_lines_are_undecidable_with_first_two_lines
+# test: test_rq_p31b_marker_with_leading_spaces_and_cr_counts_as_second_marker
+# test: test_rq_p31c_second_marker_after_bad_header_wins_over_shape_error
+# test: test_rw_a01_worker_write_of_new_log_md_keeps_state_bytes
+# test: test_rw_a02_worker_write_of_new_requirement_spec_keeps_state_bytes
+# test: test_rw_a03_worker_write_keeps_lazy_pending_debt_and_task_path
+# test: test_rw_a04_worker_write_in_other_repo_folder_keeps_state
+# test: test_rw_a05_worker_write_with_unset_state_keeps_state
+# test: test_rw_a06_main_write_without_agent_id_still_resets
+# test: test_rw_a07_main_write_with_empty_agent_id_resets
+# test: test_rw_a08_main_write_with_null_agent_id_resets
+# test: test_rw_a09_worker_write_then_main_write_same_folder_resets
+# test: test_rw_a10_main_reset_output_same_as_legacy
+# test: test_rw_a11_main_reentry_output_same_as_legacy
+# test: test_rw_b01_main_log_write_creates_sidecar_with_one_line
+# test: test_rw_b02_main_spec_write_creates_sidecar
+# test: test_rw_b03_log_then_spec_in_same_folder_adds_one_line
+# test: test_rw_b04_three_folders_in_order_add_three_lines
+# test: test_rw_b05_reentry_with_same_task_path_still_lists_folder
+# test: test_rw_b06_other_repo_folder_is_listed
+# test: test_rw_b07_folder_with_spaces_is_one_line
+# test: test_rw_b08_relative_file_path_is_written_absolute
+# test: test_rw_b09_symlinked_folder_is_written_canonical
+# test: test_rw_b10_existing_sidecar_without_trailing_newline_gets_new_line
+# test: test_rw_b11_existing_line_is_not_duplicated_and_others_kept
+# test: test_rw_b12_sidecar_line_is_folder_not_file
+# test: test_rw_b13_write_is_atomic_replacement_without_temp_left
+# test: test_rw_b14_symlink_sidecar_is_not_followed
+# test: test_rw_b15_dangling_symlink_sidecar_is_not_created_through
+# test: test_rw_b16_directory_sidecar_is_not_written
+# test: test_rw_b17_unreadable_sidecar_is_not_clobbered
+# test: test_rw_b18_write_failure_is_nonblocking_with_warning
+# test: test_rw_b19_entry_files_outside_plans_do_not_touch_sidecar
+# test: test_rw_c01_non_entry_write_same_as_legacy
+# test: test_rw_c02_edit_of_entry_files_same_as_legacy
+# test: test_rw_c03_parse_failure_same_as_legacy
+# test: test_rw_c04_missing_or_bad_session_id_same_as_legacy
+# test: test_rw_c05_no_state_file_same_as_legacy
+# test: test_rw_d01_reader_lists_log_of_written_folder
+# test: test_rw_d02_reader_lists_three_folders_in_order
+# test: test_rw_d03_reader_sees_appended_line_after_no_newline_sidecar
+# test: test_rw_d04_worker_write_is_not_seen_by_reader
 # test: test_sd_01
 # test: test_sd_02
 # test: test_sd_03

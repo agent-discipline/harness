@@ -176,22 +176,31 @@ v4.8은 구현 주체를 core §5에 정했다. stakes 중간·높음의 L1(실�
 │   └── next.md                #   프로젝트 docs/plans/NEXT.md — 검증 완료 후 다음 작업 전망(문제·방법론·대처·우선순위)
 ├── agents/
 │   └── explorer.md            #   탐색 전담 서브에이전트(Sonnet·Read/Grep/Glob만) — core §5 탐색 위임 (v4.3, deploy 대상 — ~/.claude/agents 는 repo가 정본)
-├── hooks/                     # 강제 계층 (배포: bash hooks/deploy.sh)
-│   ├── gate-guard.sh          #   L0/L1 판별(C1) + SPEC→MODE 게이트 + lazy per-diff 차단
+├── hooks/                     # 강제 계층 (배포: bash hooks/deploy.sh) — 활성 훅(core §6) = git-guard · codex-scan · gate-guard · session-mode-guard · reinject-mode · task-mode-guard · detect-layer · capture-decision · reread-track 아홉(등록은 `~/.claude/settings.json` — 배포 제외, 아래 "설치" 절). 나머지는 라이브러리(state-lib) · CLI(set-state) · 배포(deploy.sh) · 테스트(tests/)
+│   ├── gate-guard.sh          #   L0/L1 판별(C1·C2) + SPEC→MODE 게이트 + lazy per-diff 차단 + 고정 지시 파일 쓰기 ask + 메인의 L1 직접 쓰기에 작업 폴더당 1회 알림(차단 아님) + 요구 대조 표의 `닫음` 빈 칸 · 판정 불가면 L1 쓰기 차단(메인·워커 · 긴급은 알림만)
 │   ├── state-lib.sh           #   상태 SCHEMA=4 (MODE·SPEC·PENDING_GATE·DEBT·TASK_PATH) — flock 원자쓰기·quarantine · 경로 해소(조상 앵커→git 워크트리 루트→cwd) · 자기무시 .gitignore 보장(rc 0/1/2/3)
 │   ├── set-state.sh           #   상태 기록 유일 경로 CLI (mode | spec-approved | emergency | debt-clear | gate-pass)
-│   ├── task-mode-guard.sh     #   새 작업 폴더(spec·log 생성) → SPEC·MODE 리셋 (DEBT 는 유지 — 크로스-태스크 빚)
+│   ├── task-mode-guard.sh     #   메인의 새 작업 폴더(spec·log Write) → SPEC·MODE 리셋 · 워커(agent_id)의 Write 는 무시 · 그 폴더를 요구 대조 사이드카(<sid>.req-check-paths)에 (DEBT 는 유지 — 크로스-태스크 빚)
 │   ├── session-mode-guard.sh  #   SessionStart 상태 시드·복구·quarantine · 압축 시각(.compact) 기록 · 고정 지시
-│   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT)·압축 뒤 미독·고정 지시(~/.claude/standing-instructions.md) 재주입
+│   ├── reinject-mode.sh       #   매 턴 모드·빚(DEBT)·압축 뒤 미독·요구 대조(위반·판정 불가·열린 빈 칸)·고정 지시(~/.claude/standing-instructions.md) 재주입
 │   ├── git-guard.sh           #   push 네이티브 승인(ask) 위임 + 커밋/gh 발행 attribution 하드 차단
 │   ├── codex-scan.sh          #   codex 호출 명령의 시크릿 backstop
-│   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(.events — InstructionsLoaded·ConfigChange·SubagentStop)
+│   ├── detect-layer.sh        #   관측 전용 이벤트 사이드카(세션별 `<sid>.events` — InstructionsLoaded·ConfigChange·SubagentStop)
 │   ├── capture-decision.sh    #   선택 질문(AskUserQuestion)의 질문·선택지·답 → 작업 폴더 decisions.md (작업 폴더 전에는 .decisions 사이드카에 쌓았다 옮김)
 │   ├── reread-track.sh        #   작업 기록(spec·log·decisions.md) Read 시각 → .reread 사이드카 (압축 뒤 재독 판정)
 │   ├── deploy.sh              #   manifest diff → 백업+원자 교체 → stale 최상위 파일 정리 → smoke (실패 시 D9 자동 복원)
 │   └── tests/                 #   훅 테스트 (run.sh — tests.lock 무결성 + hermetic 검증)
 └── docs/                      # measurement-log + 작업 기록 (L0)
 ```
+
+### 요구 대조 (v4.10)
+
+- **무엇을 하나**: 작업 폴더 log.md 의 "요구 대조" 표(`templates/log.md` — 표지 줄 `<!-- req-check:v1 -->` 과 머리 줄을 글자 그대로)를 훅이 **판정할 때마다 끝까지 읽는다**. 쓰기를 지켜보지 않으므로 Bash 로 쓴 log 도 같다. 읽는 폴더 = `TASK_PATH` + 사이드카 `<sid>.req-check-paths`(메인이 Write 로 만든 작업 폴더 — task-mode-guard 가 적는다).
+  - **gate-guard**(PreToolUse 의 L1 쓰기 — 메인·워커): `닫음` 줄의 '만든 곳 / 넘긴 곳'이 빈 칸이거나, 표지가 있는데 꼴이 틀리면(머리 줄 · 구분 줄 · 칸 수 · 상태 값 · 표지 줄이 둘 이상 · 읽을 수 없음) 막는다(exit 2 — task · 행 · 경로 · 까닭 · 푸는 길 · 기대 머리 줄). 긴급(DEBT=1)은 막지 않고 알린다. 표지가 없거나 사라진 폴더는 대상 아님.
+  - **reinject-mode**(매 턴): 위반 · 판정 불가 · `열림` 줄의 빈 칸(task 빈 칸/줄 수 — 다섯까지)을 한 줄씩. 없으면 출력은 종전과 같다.
+- **푸는 길**: 그 줄을 채우거나 상태를 `열림`으로 되돌린다 · 꼴이 틀리면 표를 고친다 — log.md 쓰기(L0)는 막히지 않는다. 사이드카가 손상되면(심링크 · 상대 경로 줄) 모델이 고칠 수 없으니 사용자가 그 파일을 지우거나 고친다. 검사를 끄는 환경 변수 · 플래그는 두지 않는다(자가 우회 — 상태파일 거부와 같은 까닭).
+- **못 보는 것**(절차 규칙으로 남는다 — core §0.5): ① 표지 · 표를 만들지 않은 작업 ② 타임라인에만 "닫음"을 쓰고 표는 `열림`으로 둔 것(알림만) ③ 칸이 비었는지만 본다 — 엉뚱한 file:line 은 못 본다 ④ 원문을 잘라 읽어 표에 옮기지 않은 요구 ⑤ Bash · MCP 로 쓴 L1 ⑥ 표지 줄을 지우면 그 폴더의 검사가 꺼진다(log 의 diff 로 남는다) ⑦ 표지 없이 덧붙인 둘째 표 · 표 밖에 덧붙인 줄(첫 표만 읽는다) ⑧ 사이드카에 없는 폴더(워커 · Bash 가 만든 작업 폴더) ⑨ 파일 머리 BOM · NBSP 가 붙은 표지 줄(대상 아님으로 본다 — NEXT 후보).
+- 근거 · 테스트: `docs/plans/2026-11-27/close-out-requirement-check/`(실측 = `incident.md`) · `hooks/tests/cases/req-check.sh`(파서) · `req-check-gate.sh`(차단 · 알림) · `req-check-writer.sh`(사이드카 쓰기 · 워커 Write).
 
 ### 압축 뒤 재독 · 선택 질문 기록 · 고정 지시 (v4.5)
 
@@ -224,6 +233,7 @@ bash hooks/tests/run.sh          # 훅 테스트
 
 ## 이력
 
+- **v4.10 (2026-11-28)**: task를 닫기 전 요구 대조 — core §4 새 줄 · `task-units.md` §3(옮기는 법 · 검증 앞 대조와 닫기 전 재확인 · 넘김은 §4 로 묻기 · 큰 표는 읽기 전용 Opus 워커) · log 템플릿 "요구 대조" 표(표지 · 고정 머리 줄 · 상태 칸) · 명세 템플릿 9절 결과 칸 · work-records 규칙 10 · 훅: state-lib 표 파서와 사이드카 · gate-guard 차단 · reinject 알림 · task-mode-guard 가 워커의 Write 로 리셋하지 않음 · core §6 활성 훅 목록을 README 로(core 15,390 → 15,370자). 근거: deploy-study-note ⑬ 실측(닫은 task 에 빠진 요구 다섯 — 테스트 · 리뷰 · 회수가 잡은 것 0) · 명세 · 실측 기록: `docs/plans/2026-11-27/close-out-requirement-check/`
 - **v4.9 (2026-11-23)**: core §4 덜 만드는 순서(새 이름 — ②이 코드베이스에서 찾는다, ⑤새 의존성·새 기술은 전환 기준, ①뺀 것과 다시 더할 조건, `단순화:` 주석)와 세부 문서 `build-less.md` · `testing.md`(어디에 쓰나, 고장 내기) · `reading-test.md` · `writing/rule-docs.md` · 리뷰 렌즈를 `review-lenses.md`로 옮기고 동시성 렌즈를 더함 · 필요도 세 등급 · 인터뷰에서 묻는 것과 "기본으로 정한 것" · core 크기 기준을 글자 수(15,404자)로, 변경 이력을 `HISTORY.md`로 · 명세·log·NEXT 템플릿의 새 칸. 명세·근거: `docs/plans/2026-11-22/service-communication-http-default/` task 10
 - **v4.8 (2026-11-21)**: 구현 주체 — stakes 중간·높음의 L1(core §1 — 실행 정책 파일 포함)은 Opus 워커가 쓰고 메인은 낮은 stakes·긴급 수정·사용자 확인이 필요한 조작·lazy 모드의 작업만 직접 한다, 구현 워커 회수(테스트 설계·리뷰 반영 워커 포함 — 테스트 재실행과 건너뜀 계수·diff 범위 대조·동시 투입 뒤 마지막 상태 재확인), 리뷰 역할(리뷰어가 결함을 찾고 메인은 명세에 비추어 판정 — 메인은 리뷰어가 아님), 중간 테스트 설계 = 구현자와 다른 워커, 위임 목적 = 품질과 메인 컨텍스트 보호(core §0.2 한정·§4·§5) · gate-guard 가 메인의 직접 쓰기에 작업 폴더당 1회 알림(차단 아님). 근거: 위 "실측 — 구현 위임" 절 · 명세·리뷰: `docs/plans/2026-11-21/implementation-by-workers/`
 - **v4.3 (2026-11-06)**: 실측 반영 — core §0.5 예외·§1 L1에 `agents/` · 탐색 위임 `explorer`(Sonnet·읽기 전용, `agents/explorer.md` 배포, 목적 = 메인 컨텍스트 보호, 작은 조회는 메인 직접 — core §5), 이름 지침(core §4 1구 + `design-taste.md` §6 찾히는 이름), 측정 로그 13열 `워커`(모델×수·토큰 합). 근거: 위 "실측" 절(clean-code-llm-experiment 1~4차 결론) · 적용 기준·패치·리뷰: `docs/plans/2026-11-06/harness-v4-3/`

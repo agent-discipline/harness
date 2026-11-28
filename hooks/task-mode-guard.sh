@@ -12,6 +12,8 @@
 #     같은 작업 폴더 내 재작성(spec 갱신·log 재생성)은 리셋하지 않는다.
 #   - 실제 차단은 gate-guard 가 SPEC=0/MODE=UNSET 일 때 L1 변경을 막아 수행(teeth).
 #   - 주의: 파일을 Write 로 덮어써도 발화한다(생성/덮어쓰기 구분 불가) — 작업 폴더 비교로 재리셋을 억제.
+#   - 워커(agent_id 있음)의 Write 는 아무것도 바꾸지 않는다. 메인의 진입점 Write 는 그 작업 폴더를 요구 대조 사이드카
+#     <sid>.req-check-paths 에 더한다(state_reqcheck_remember — 같은 폴더 재진입 · 검증 실패 분기 포함, 실패는 경고만).
 #
 # 종료 코드: 0 (알림만; 하드 차단은 gate-guard)
 
@@ -34,6 +36,11 @@ fi
 
 TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty')
 [ "$TOOL_NAME" = "Write" ] || exit 0
+# 워커(서브에이전트)의 Write 는 메인의 게이트를 바꾸지 않는다(실측 2026-11-27 — 워커가 작업 폴더 문서를 Write 하자 메인 세션의
+#   SPEC·MODE 가 리셋됐다). 기준은 gate-guard reread_gate·worker_notice 와 같다: agent_id 가 비어 있지 않으면 워커 — 상태·사이드카
+#   무변경 · 출력 없음. 없음·""·null = 메인(종전대로). 판별 불가(jq 실패)는 메인으로 본다 — 리셋이 빠지는 쪽이 게이트 우회라 더 나쁘다.
+AGENT_ID=$(echo "$HOOK_INPUT" | jq -r '.agent_id // empty' 2>/dev/null || true)
+[ -z "$AGENT_ID" ] || exit 0
 
 FILE_PATH=$(echo "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty')
 # 새 작업 진입점 파일인가 — requirement-spec.md(정상) 또는 log.md(긴급 선행 의무). 절대·상대 모두.
@@ -58,6 +65,21 @@ if [ ! -e "$STATE" ] && [ ! -L "$STATE" ]; then exit 0; fi
 WORK_DIR=$(dirname -- "$FILE_PATH")
 canon() { realpath -m -- "$1" 2>/dev/null || realpath -- "$1" 2>/dev/null || python3 -I -S -c 'import os,sys;print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null; }
 case "$WORK_DIR" in /*) CFP=$(canon "$WORK_DIR") ;; *) CFP=$(canon "$CWD/$WORK_DIR") ;; esac
+
+# 요구 대조가 읽을 작업 폴더 목록 — 메인이 Write 로 쓴 작업 폴더를 <sid>.req-check-paths 에 한 줄(중복 없음). 상태 검증 **앞**에
+#   두어 같은 TASK_PATH 재진입 · 검증 실패(reset-pending) 분기에서도 오른다. 다른 저장소의 폴더도 이 세션의 상태 디렉토리에.
+#   실패는 경고 한 줄 + 통과(비차단 훅) — 목록에 빠진 폴더는 TASK_PATH 일 때만 읽힌다.
+REQCHECK_SIDECAR="$(dirname -- "$STATE")/$SESSION_ID.req-check-paths"
+REQCHECK_RC=0; state_reqcheck_remember "$(dirname -- "$STATE")" "$SESSION_ID" "$CFP" || REQCHECK_RC=$?
+case "$REQCHECK_RC" in
+  0) ;;
+  1) echo "[task-mode-guard] 경고: 요구 대조 사이드카 기록 생략 — 잠금 실패($REQCHECK_SIDECAR.lock). 상태 리셋과 무관(통과)." >&2 ;;
+  2) echo "[task-mode-guard] 경고: 요구 대조 사이드카 기록 생략 — $REQCHECK_SIDECAR 가 심링크·정규 파일 아님·읽기 불가이거나 임시 파일 실패. 그대로 둠(통과)." >&2 ;;
+  3) echo "[task-mode-guard] 경고: 요구 대조 사이드카 기록 실패 — $REQCHECK_SIDECAR 이름 바꾸기 실패. 기존 줄은 그대로(통과)." >&2 ;;
+  4) echo "[task-mode-guard] 경고: 요구 대조 사이드카 기록 생략 — 작업 폴더를 절대 경로 한 줄로 적을 수 없음. $REQCHECK_SIDECAR 무변경(통과)." >&2 ;;
+  5) echo "[task-mode-guard] 경고: 요구 대조 사이드카 기록 생략 — 상태 디렉토리 확보 실패(${STATE_ENSURE_REASON:-unknown}). $REQCHECK_SIDECAR 무변경(통과)." >&2 ;;
+  *) echo "[task-mode-guard] 경고: 요구 대조 사이드카 기록 — 예상 밖 실패(rc $REQCHECK_RC). 기록 여부 불명($REQCHECK_SIDECAR · 통과)." >&2 ;;
+esac
 
 # rc 1 = 판정 불가(flock 등) → PostToolUse 계열: 경고 1줄 + 통과(C2). 리셋은 marker 로 인계.
 if ! state_ensure_valid "$STATE"; then

@@ -1,0 +1,545 @@
+#!/bin/bash
+# gate-guard.sh — 구현 모드 게이트의 *발생*을 강제하는 핵심 훅 (teeth).
+# PreToolUse 와 PostToolUse(matcher: Edit|Write|MultiEdit) 양쪽 + PreToolUse:Bash 에 등록한다.
+# stdin JSON: {hook_event_name, tool_name, tool_input:{file_path,command}, cwd, session_id, ...}
+#
+# 정책 (core v4 §1 — 게이트 상태 전이 SPEC→MODE):
+#   상태: <project>/.claude/lazymode/<session_id> — SCHEMA=4 flat KEY=value(state-lib.sh 소유).
+#   키: MODE ∈ {UNSET,auto,lazy} · SPEC(명세 합의) · PENDING_GATE(lazy) · DEBT(긴급 빚) · TASK_PATH.
+#   - session_id 없음(빈·허용 외 문자 → sanitize 빈 문자열) → inert(exit 0). 롤아웃 안전(fail-open — 세션 식별 불가 시 강제 못 함).
+#   - **L0/L1 분류를 상태검증보다 먼저** 한다: L0(문서 등)는 상태가 손상돼도 상태검증 없이 즉시 통과 —
+#     docs 쓰기가 상태 손상으로 차단되면 안 된다. 상태 파일 확정(부재→시드/손상→격리)은 **L1일 때만**.
+#   - 상태 파일 부재 → 같은 임계구역에서 UNSET 시드 + 게이트(fail-safe, init-if-absent — inert 아님).
+#   - 손상(타입이상·미지/구 SCHEMA·구 모드값 pair/refactor/fast) → quarantine + UNSET 재생성(state-lib) → 아래 차단.
+#   - C1 L0/L1 분류(classify_l0l1 — 불변식 반전: L1이 기본, L0은 명확·무조건 양성조건에서만): v3 task-03b 로직 그대로 유지.
+#   - **SPEC≠1 → L1 차단**: 인터뷰→요구사항 명세서(requirement-spec.md) 사용자 합의가 선행 —
+#     합의 답변을 받으면 `set-state.sh spec-approved` 로 기록. 긴급 수정은 새 작업 폴더에 log.md 생성(리셋 발동) 후
+#     긴급 확인 답변을 받아 `set-state.sh emergency`(MODE=auto·SPEC=1·DEBT=1 원자 기록)로 진입 — 차단 우회 아님.
+#     기록 실패 시 차단 유지(fail-open 금지 — C2 원칙②).
+#   - MODE=UNSET(SPEC=1 이후) → 자율성 2택(auto/lazy) 질문 후 `set-state.sh mode <선택>` 기록.
+#   - MODE=auto → 게이트 없음(명세 합의 후 자율 실행 — 검증·리뷰는 stakes 비례, 자율 ≠ 검증 생략).
+#   - MODE=lazy:
+#       · PostToolUse(Edit|Write) → PENDING_GATE=1 (diff 발생 = 게이트 빚짐)
+#       · PreToolUse(Edit|Write)  → PENDING_GATE=1 이면 차단(직전 diff 게이트 먼저) — 통과 시 `set-state.sh gate-pass`
+#   - 압축 뒤 미독(v4.5): 위 판정을 모두 통과한 PreToolUse L1 쓰기(메인만)를 작업 기록 Read 전까지 차단(reread_gate).
+#   - 상태파일(.claude/lazymode/*) Edit/Write/MultiEdit → classify 이전에 **하드 거부(exit 2, MODE 무관)**:
+#       상태는 훅(state-lib)이 flock 원자쓰기로 소유 — Claude가 SPEC/MODE/DEBT 를 직접 써서 게이트를
+#       우회하는 것을 차단. Bash 경로는 훅 bash 쓰기와 구분 불가라 소프트 리마인더만(§0.6 FP).
+#
+# 종료 코드: 0 통과 / 2 차단(PreToolUse)
+
+set -eu
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=state-lib.sh
+. "$SCRIPT_DIR/state-lib.sh" 2>/dev/null || {
+  echo "[gate-guard] state-lib.sh 로드 실패 — 게이트 비활성(fail-open). 배포 무결성을 확인하세요." >&2
+  exit 0
+}
+
+HOOK_INPUT=$(cat)
+
+# stdin JSON 파싱 가드 (C2 원칙①: 대상 여부 자체 판정 불가 → 통과+경고 1줄. set -e 하에서 jq 대입 실패로
+# 훅이 죽어 전 도구가 마비되는 것 차단 — git-guard.sh 동일 패턴. 빈 입력 포함).
+if [ -z "$HOOK_INPUT" ] || ! printf '%s' "$HOOK_INPUT" | jq -e 'type == "object"' >/dev/null 2>&1; then
+  echo "[gate-guard] 경고: stdin JSON 파싱 실패(빈 입력 포함) — 게이트 대상 판정 불가, 통과 처리(C2 ①)." >&2
+  exit 0
+fi
+
+EVENT=$(echo "$HOOK_INPUT" | jq -r '.hook_event_name // empty')
+TOOL_NAME=$(echo "$HOOK_INPUT" | jq -r '.tool_name // empty')
+IS_BASH=0
+case "$TOOL_NAME" in
+  Edit|Write|MultiEdit) ;;
+  Bash) IS_BASH=1 ;;   # lazy 소프트 리마인더용 (PreToolUse:Bash)
+  *) exit 0 ;;
+esac
+
+CWD=$(echo "$HOOK_INPUT" | jq -r '.cwd // empty')
+CWD_VALID=1
+if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
+  CWD_VALID=0   # cwd 부재·비디렉토리 — STATE 경로엔 $PWD 폴백, 단 상대 file_path 분류는 아래에서 L1 차단(task-03b#3)
+  CWD="$PWD"
+fi
+
+# session_id 로 상태 파일 키잉 (파일명 sanitize — [A-Za-z0-9-] 만, path traversal 방지)
+SESSION_ID=$(state_sanitize_sid "$(echo "$HOOK_INPUT" | jq -r '(.session_id // "") | if type == "string" and test("^[A-Za-z0-9-]+\\z") then . else "" end' 2>/dev/null || true)")
+if [ -z "$SESSION_ID" ]; then
+  [ "$EVENT" = "PreToolUse" ] && echo "[gate-guard] session_id 없음 — 게이트 비활성(fail-open). 모드 강제 불가." >&2
+  exit 0   # 세션 식별 불가 → inert (fail-open)
+fi
+STATE="$(state_resolve_dir "$CWD" "$SESSION_ID")/$SESSION_ID"   # 조상 탐색 — cwd 추종 오차단 수정(gate-cwd-resolution)
+
+# ── 경로 분류 헬퍼 (canonical 경로 기준 — 문자열 glob 아님, C1 판별표) ────────────────
+canon_file() { # echo canonical path | 실패 시 비-0
+  local f="$1"
+  case "$f" in /*) ;; *) f="$CWD/$f" ;; esac
+  realpath -m -- "$f" 2>/dev/null && return 0
+  realpath -- "$f" 2>/dev/null && return 0
+  python3 -I -S -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$f" 2>/dev/null && return 0
+  return 1
+}
+# ~/.claude 배포·정책 대상(deploy.sh MANIFEST + 직접수정 차단 대상) 판별 — repo 밖이라도 L1.
+# canonical file 을 받아 rc: 0=배포/정책 대상(L1) · 1=명백히 아님(L0 면제) · 2=판별 불가(호출부 → L1 보수).
+# HOME 부재·canon 실패·준비명령(tr) 실패·빈 결과는 rc 2(판별 불가 = 확신 못 하면 차단, task-03b#3).
+# 비교 경로 전체를 case-fold — prefix·rel 모두 소문자화(대소문자 비구분 FS 의 ~/.CLAUDE 우회 차단, task-03b#4).
+is_claude_deploy_path() { # <canonical file> → rc 0/1/2
+  local f="$1" home_claude home_canon f_lc hc_lc rel_lc
+  [ -n "${HOME:-}" ] || return 2                 # HOME 부재 → 판별 불가 (L1)
+  # HOME 이 / 로 canon(루트 붕괴)되면 ~/.claude 접두 비교가 모든 절대경로를 삼켜 오분류 → 판별 불가 (task-03b#4)
+  home_canon=$(canon_file "$HOME") || return 2
+  case "$home_canon" in /*) ;; *) return 2 ;; esac  # 비절대 → 판별 불가
+  [ "$home_canon" != "/" ] || return 2           # HOME=/ (루트 붕괴) → 판별 불가
+  home_claude=$(canon_file "$HOME/.claude") || return 2   # canon 실패 → 판별 불가 (L1)
+  case "$home_claude" in /*) ;; *) return 2 ;; esac  # home_claude 비절대 → 판별 불가 (task-03b#4)
+  [ "$home_claude" != "/" ] || return 2          # home_claude=/ (경계 붕괴) → 판별 불가
+  # 준비명령(tr) 실패·빈 결과 → 판별 불가(L1). ||/조건 컨텍스트라 함수 내 errexit 무시되므로 명시 감지.
+  f_lc=$(printf '%s' "$f" | tr '[:upper:]' '[:lower:]') || return 2
+  hc_lc=$(printf '%s' "$home_claude" | tr '[:upper:]' '[:lower:]') || return 2
+  { [ -n "$f_lc" ] && [ -n "$hc_lc" ]; } || return 2
+  case "$f_lc" in
+    "$hc_lc"/*) rel_lc="${f_lc#"$hc_lc"/}" ;;
+    *) return 1 ;;                               # ~/.claude 하위 아님 → 명백히 아님
+  esac
+  [ -n "$rel_lc" ] || return 2                   # 빈 rel → 판별 불가 (L1)
+  case "$rel_lc" in
+    core.md|history.md|claude.md) return 0 ;;    # 정책·부트스트랩 (최고 blast radius)
+    settings.json|settings.local.json) return 0 ;;  # 훅 등록 — 직접수정 차단
+    hooks/*|playbooks/*|templates/*) return 0 ;;
+  esac
+  return 1
+}
+# repo 내 docs 면제 판정 (임의 깊이 */docs/** — 단 정책 파일(claude.md·core.md 등)은 제외 → L1).
+# rc 0 = docs L0 면제 · rc 1 = 면제 아님/준비실패 안전측(L1).
+# **docs/ 컴포넌트 판정은 리터럴(fold 금지)** — 재설계#1: fold 는 L0 부여 경로에 절대 쓰지 않는다
+# (DOCS/→docs/ fold 가 대문자 디렉토리에 L0 를 잘못 부여한 회귀가 재설계를 유발). L0 부여의 docs/ 여부는
+# 리터럴 소문자 `docs` 컴포넌트로만 인정하고, **정책/배포 배제(→L1)** 매칭만 fold 로 과게이트(안전).
+# 준비명령(basename·tr) 실패·빈 결과는 안전측 L1(재설계#5).
+# **docs-root 분기(2026-08-28)**: git 루트 basename 자체가 리터럴 소문자 `docs` 인 repo(예: jun-bank/docs —
+# 문서 전용 독립 repo)는 rel 에 `docs/` 컴포넌트가 없어 전 파일이 L1 로 걸려 게이트 교착이 실측됐다.
+# 이때는 repo 전체를 순수 문서로 보고 컴포넌트 검사를 건너뛴다(정책 파일 배제는 그대로 유지).
+# **#6 정책 경로 앵커**: 정책 디렉토리(hooks/·playbooks/·templates/)는 canonical **$ROOT 직속**
+# (repo 루트 직속)에만 존재한다 — 그런 경로는 rel 에 `docs/` 컴포넌트가 없어 애초에 이 함수에 도달하지 않고
+# classify 의 "repo 내 비-docs → L1" 로 걸린다. 따라서 **docs 하위**의 hooks/playbooks/templates 이름
+# 디렉토리(예: docs/foo/hooks/design.md)는 정책이 아니라 순수 문서이므로 L0 여야 한다. 과거의 `after`
+# 컴포넌트 매칭은 이 순수 문서를 잘못 L1 로 앵커해 제거했다(#6). 정책 **파일**(base name) 배제는 유지.
+is_docs_exempt() { # <canonical file> <repo root> → rc 0/1
+  local cf="$1" root="$2" rel base base_lc root_base
+  rel="${cf#"$root"/}"
+  [ "$rel" != "$cf" ] || return 1                # repo 밖(방어 — 호출부에서 이미 걸러짐)
+  [ -n "$rel" ] || return 1                       # 빈 rel(준비 실패) → 안전측 L1
+  # 루트 basename 이 리터럴 소문자 `docs` 면 repo 전체가 문서 → 컴포넌트 검사 생략(docs-root 분기).
+  #   **fold 금지**(위 재설계#1 과 동일 근거): `Docs`·`DOCS`·`x-docs` 는 비대상 → 종전 컴포넌트 판정.
+  root_base=$(basename -- "$root") || return 1    # basename 실패 → 안전측 L1
+  if [ "$root_base" != "docs" ]; then
+    # docs/ 컴포넌트 필수 — **리터럴 소문자만**(fold 안 함). DOCS/·Docs/ 등 대문자는 docs 아님 → L1.
+    case "/$rel" in */docs/*) ;; *) return 1 ;; esac
+  fi
+  # 이하 정책 파일 배제(→L1)는 fold 허용 — 과게이트는 안전측이라 대소문자 우회를 fold 로 닫는다.
+  base=$(basename -- "$cf") || return 1           # basename 실패 → 안전측 L1
+  base_lc=$(printf '%s' "$base" | tr '[:upper:]' '[:lower:]') || return 1
+  [ -n "$base_lc" ] || return 1
+  case "$base_lc" in
+    claude.md|core.md|history.md) return 1 ;;  # 정책 파일 → L1
+    settings.json|settings.local.json) return 1 ;;           # 정책(훅 등록) → L1
+  esac
+  return 0
+}
+# ── C1 L0/L1 분류 (task-03b 재설계 — 불변식 반전: **L1이 기본**, L0은 아래 두 양성경로가 완전히 성립할 때만) ──
+# 반환: rc 0 = L0(면제) · rc 1 = L1(게이트). 인자: <canonical file>.
+#   (A) repo 내부 순수 문서: git toplevel(ROOT) canon 성공 AND ROOT 가 CFILE 조상 AND rel 이 리터럴 `docs/`
+#       컴포넌트 AND 정책 파일 아님(is_docs_exempt). 상태파일(ROOT/.claude/lazymode/*)도 L0(PENDING_GATE 내리기).
+#   (B) 어떤 repo 에도 안 속함: .git 조상 전무(안전 순회) AND bare repo 아님 AND is_claude_deploy_path rc 1
+#       (명백히 배포·정책 대상 아님 — ~/.claude 비배포 안전영역[projects/memory 등]과 repo-밖 스크래치패드 포함).
+#   그 외 전부 = L1: canon/git/준비 실패 · bare repo · rc=0 빈/비조상 ROOT · realpath 실패 · 정책·배포 경로 · repo 내 비-docs.
+# 함수 컨텍스트(if 조건 호출)이므로 내부 errexit 무시 — 각 실패는 명시 `return 1`(안전측 L1)로 강제.
+classify_l0l1() { # <canonical file> → rc 0(L0) / 1(L1)
+  local cf="$1" cdir seek root git_rc anc parent i is_bare dp
+  # canonical 경로에 /.git/ 포함 = repo 내부/실행 훅 → 무조건 L1
+  case "$cf" in */.git/*) return 1 ;; esac
+  cdir=$(dirname -- "$cf") || return 1
+  [ -n "$cdir" ] || return 1
+  # FILE 의 실존 조상에서 git 판별 (GIT_DIR/GIT_WORK_TREE 상속 무시 — CWD 아닌 FILE 기준)
+  seek="$cdir"; i=0
+  while [ ! -d "$seek" ] && [ "$seek" != "/" ]; do
+    seek=$(dirname -- "$seek") || return 1
+    i=$((i+1)); [ "$i" -lt 4096 ] || return 1
+  done
+  set +e
+  root=$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$seek" rev-parse --show-toplevel 2>/dev/null)
+  git_rc=$?
+  set -e
+  if [ "$git_rc" = "0" ]; then
+    [ -n "$root" ] || return 1                     # rc=0 인데 빈 ROOT = 비정상(신뢰불가) → L1 (재설계#3)
+    root=$(realpath -- "$root" 2>/dev/null) || return 1   # realpath 실패 → L1(원문 대체 금지, 재설계#3)
+    [ -n "$root" ] || return 1
+    case "$root" in /*) ;; *) return 1 ;; esac     # ROOT 가 절대경로 아님(빈·상대) = 신뢰불가 → L1 (task-03b#1)
+    case "$cf" in
+      "$root"|"$root"/*) ;;                        # ROOT 가 CFILE 조상(prefix) → 계속
+      *) return 1 ;;                               # 비조상 = 판별 불가 → L1
+    esac
+    case "$cf" in
+      "$root"/.claude/lazymode/*) return 0 ;;      # 상태파일 (PENDING_GATE 내리기 등)
+    esac
+    is_docs_exempt "$cf" "$root" && return 0       # docs 순수문서(정책·hooks 제외) → L0
+    return 1                                       # repo 내 비-docs → L1
+  fi
+  # git rc≠0 — "repo 아님" 확정 불가(bare·dubious ownership·corrupt·권한·GIT_CEILING·로케일 모두 여기).
+  # (1) bare repo 방어(재설계#4): .git 조상 순회가 못 잡는 bare(현 dir 자체가 GIT_DIR) → is-bare true 면 L1.
+  set +e
+  is_bare=$(env -u GIT_DIR -u GIT_WORK_TREE git -C "$seek" rev-parse --is-bare-repository 2>/dev/null)
+  set -e
+  [ "$is_bare" = "true" ] && return 1
+  # (2) .git 조상 순회(안전화, 재설계#2): fixed-point 종료(/·// 커버) + dangling symlink(-L)도 발견 + 깊이 상한.
+  anc="$cdir"; i=0
+  while : ; do
+    if [ -e "$anc/.git" ] || [ -L "$anc/.git" ]; then return 1; fi   # repo 컨텍스트(dangling 포함) = L1
+    parent=$(dirname -- "$anc") || return 1
+    [ "$parent" = "$anc" ] && break                # fixed-point — 루트 도달
+    anc="$parent"
+    i=$((i+1)); [ "$i" -lt 256 ] || return 1       # 병리적 경로 방어 → L1
+  done
+  # 진짜 repo-밖: is_claude_deploy_path rc 1(명백히 배포·정책 대상 아님)만 L0, rc 0(배포)·rc 2(판별불가) = L1.
+  dp=0; is_claude_deploy_path "$cf" || dp=$?
+  [ "$dp" = "1" ] && return 0
+  return 1
+}
+
+# ── Bash 경로: file_path가 없어 산출물 분류가 안 맞는다 — lazy 소프트 리마인더만 (하드 차단 없음, §0.6) ──
+# (Bash 하드 차단은 안 한다: 테스트 실행·정당한 셸 사용의 FP가 큼. 프로토콜+reinject로 보강.)
+if [ "$IS_BASH" = "1" ]; then
+  B_CMD=$(echo "$HOOK_INPUT" | jq -r '.tool_input.command // empty' 2>/dev/null || true)
+  # 상태파일 대상 Bash **쓰기** backstop 차단 (구현 리뷰 I1) — **상태검증(ensure_valid)보다 먼저**:
+  # lock 실패(검증 불가)가 이 차단을 우회하지 못하게 한다(post-fix 재점검 교정). 예외 = set-state.sh 경유.
+  # 경로 매칭은 `[^|;&]*` — 파이프·세미콜론·&를 넘지 않아 "rm /tmp/x; grep 상태읽기" 오탐 차단(post-fix 교정).
+  # **한계 명시(§0.6 — 수용 리스크)**: 결정론 backstop 이지 완전 차단이 아니다 — Bash 의미론은 훅이 관찰
+  # 불가(perl -pi·dd·변수 간접 리다이렉트·명령에 set-state.sh 문자열을 섞는 자가 우회 등은 미탐). 유일
+  # 기록 경로 준수는 절차 규칙이고, 이 패턴은 흔한 실수·편의 우회만 잡는다.
+  # 상태파일 Bash 쓰기 차단 — lazymode 아래 쓰기 패턴 전부(문자열 패턴으로 .events 예외를 두려 했으나
+  # regex 토큰 경계≠셸 word-splitting(tab·>·심링크)으로 상태파일 쓰기 우회가 신설됨을 리뷰 loop1이 실증
+  # (P0). detect-layer 는 훅 서브프로세스라 이 Bash 가드 대상이 아니므로 .events 예외 자체가 불필요.
+  if printf '%s' "$B_CMD" | grep -q '\.claude/lazymode' \
+     && ! printf '%s' "$B_CMD" | grep -q 'set-state\.sh' \
+     && printf '%s' "$B_CMD" | grep -qE '(sed([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-i[^|;&]*\.claude/lazymode|(^|[|;&[:space:]])(tee|mv|cp|rm|truncate)[[:space:]][^|;&]*\.claude/lazymode|>[[:space:]]*[^|;&[:space:]]*\.claude/lazymode)'; then
+    echo "[gate-guard] 상태파일은 훅 소유 — Bash 쓰기(sed -i·tee·redirect·mv·rm 등)로 SPEC/MODE/DEBT 를 직접 바꾸는 것은 차단됩니다. 상태 기록은 'bash ~/.claude/hooks/set-state.sh <명령>' 이 유일한 경로입니다." >&2
+    exit 2
+  fi
+  if ! state_ensure_valid "$STATE"; then
+    echo "[gate-guard] 경고: 상태 검증 실패 — 모드 리마인더를 적용 못 했습니다(Bash·비차단, 상태쓰기 차단은 위에서 이미 적용). .claude/lazymode/$SESSION_ID 확인." >&2
+    exit 0
+  fi
+  B_MODE=$(state_get "$STATE" MODE)
+  # lazy 의 Bash 파일쓰기(sed -i·tee·redirect·heredoc)는 per-diff 게이트를 우회한다 — 소프트 리마인더만.
+  if [ "$B_MODE" = "lazy" ] && echo "$B_CMD" | grep -qE '(sed([[:space:]]+-[a-zA-Z]+)*[[:space:]]+-i|(^|[[:space:]|;&])tee[[:space:]]|<<[-]?[[:space:]]*["'"'"']?[A-Za-z_])'; then
+    echo "[gate-guard] lazy 모드: Bash로 파일을 수정하면 per-diff 이해 게이트가 우회됩니다. 코드 변경은 Edit/Write로 해 게이트를 태우거나, 이 변경도 before/after 스니펫으로 설명·판정하세요. (implementation-lazymode.md §3 — 소프트 리마인더)" >&2
+  fi
+  exit 0
+fi
+
+# ── Edit/Write/MultiEdit 경로 ──
+FILE_PATH=$(echo "$HOOK_INPUT" | jq -r '.tool_input.file_path // empty')
+if [ -z "$FILE_PATH" ]; then
+  # 유효 객체 JSON + 대상 도구(Write/Edit/MultiEdit) 판명됐는데 file_path 부재 → 보수 차단(C2 원칙②).
+  if [ "$EVENT" = "PreToolUse" ]; then
+    echo "[gate-guard] $TOOL_NAME 인데 file_path 없음 — 분류 불가로 안전 차단(fail-closed). 정상 도구 호출이면 file_path 를 포함하세요. (C2 ②)" >&2
+    exit 2
+  fi
+  echo "[gate-guard] 경고: $TOOL_NAME 인데 file_path 없음(PostToolUse) — 분류 불가, 게이트 미적용." >&2
+  exit 0
+fi
+
+# invalid cwd + 상대 file_path → 어느 디렉토리 기준인지 확정 불가 → 안전 차단 (task-03b#3).
+# 절대 file_path 는 cwd 무관하므로 영향 없음. STATE 는 $PWD 폴백을 쓰지만 여기서 분류 전에 끊는다.
+if [ "$CWD_VALID" = "0" ]; then
+  case "$FILE_PATH" in
+    /*) ;;   # 절대경로 — cwd 무관
+    *)
+      if [ "$EVENT" = "PreToolUse" ]; then
+        echo "[gate-guard] cwd 부재·비디렉토리인데 상대경로($FILE_PATH) — 경로 의미 확정 불가로 안전 차단(fail-closed). (task-03b#3)" >&2
+        exit 2
+      fi
+      echo "[gate-guard] 경고: cwd 무효 + 상대경로 — 분류 불가(PostToolUse), 게이트 미적용." >&2
+      exit 0
+      ;;
+  esac
+fi
+
+# canon 이전 원본 file_path 의 .git 컴포넌트 방어 (task-03b#2): 심링크 canonicalization 이
+# `/p/.git/hooks/x` → 실대상 으로 바꿔 .git 신호를 지우는 우회를 원문에서 차단. */.git 또는 */.git/*
+# (basename .git — 미생성 gitdir 파일 쓰기 포함) → 무조건 L1(아래 classify 결과와 무관하게 게이트).
+GIT_COMPONENT=0
+case "/$FILE_PATH/" in */.git/*) GIT_COMPONENT=1 ;; esac
+
+# 1) canonical 경로 (실패 = 판정 불가 → fail-closed 차단, C2)
+CFILE=$(canon_file "$FILE_PATH") || {
+  echo "[gate-guard] 경로 정규화 실패 — 안전을 위해 차단(fail-closed). 경로: $FILE_PATH" >&2
+  exit 2
+}
+# canon rc=0 이라도 빈·비절대 출력은 신뢰불가(절대경로 아님) → 차단 (task-03b#1).
+case "$CFILE" in
+  /*) ;;
+  *)
+    echo "[gate-guard] 정규화 결과가 절대경로가 아님(빈·상대) — 안전 차단(fail-closed). 경로: $FILE_PATH" >&2
+    exit 2
+    ;;
+esac
+
+# #1) 상태파일(.claude/lazymode/*) Edit/Write/MultiEdit 하드 거부 (classify 이전, MODE 무관).
+#    상태는 훅(state-lib)이 flock 원자쓰기로 소유한다 — Edit/Write 도구 경로엔 정당한 용도가 없다.
+#    Claude가 MODE=auto 등을 직접 써서 모드 게이트·fast 빚을 우회하는 것을 차단(7/3 우회의 Edit/Write판).
+#    Bash 경로(IS_BASH=1)는 위 IS_BASH 분기에서 이미 종료 — 훅 bash 쓰기와 구분 불가라 소프트 리마인더만(§0.6 FP).
+case "$CFILE" in
+  */.claude/lazymode/*)
+    if [ "$EVENT" = "PreToolUse" ]; then
+      echo "[gate-guard] 상태파일은 훅 소유(state-lib) — Claude 직접 편집(Edit/Write) 금지. 상태 기록은 사용자 답변 후 'bash ~/.claude/hooks/set-state.sh <명령> .claude/lazymode/$SESSION_ID' 가 유일한 경로입니다(spec-approved | mode <auto|lazy> | emergency | debt-clear | gate-pass)." >&2
+      exit 2
+    fi
+    echo "[gate-guard] 경고: 상태파일 변경이 PostToolUse까지 도달($CFILE) — Claude 직접 편집은 금지입니다(state-lib 소유). Pre 훅 우회 여부를 확인하세요." >&2
+    exit 0
+    ;;
+esac
+
+# #1b) 고정 지시 파일(~/.claude/standing-instructions.md) 쓰기 → 네이티브 승인(ask) (v4.5 계약 보충 33).
+#    모든 세션에 매 턴 주입되므로 SPEC/MODE·agent_id 와 무관하게 사용자 확인을 받는다. 양쪽 모두 canon_file 로
+#    해소해 비교(아직 없는 파일·심링크 경유도 같다). HOME 이 비었거나 해소 실패면 이 판정은 건너뛴다(종전 흐름).
+#    JSON 형식은 git-guard emit_ask 와 같다(stdout + exit 0). PostToolUse·Bash 는 대상 아님(Bash 는 한계).
+if [ "$EVENT" = "PreToolUse" ] && [ -n "${HOME:-}" ] \
+   && SI_CANON=$(canon_file "$HOME/.claude/standing-instructions.md") && [ -n "$SI_CANON" ] \
+   && [ "$CFILE" = "$SI_CANON" ]; then
+  jq -cn --arg r "[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"ask",permissionDecisionReason:$r}}' \
+    2>/dev/null \
+    || printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"ask","permissionDecisionReason":"[gate-guard] 고정 지시 파일은 모든 세션에 매 턴 주입됩니다 — 변경 내용을 확인하세요."}}\n'
+  exit 0
+fi
+
+# 2) L0/L1 분류 (상태검증보다 먼저 — L0면 상태검증 없이 통과). **기본 L1 — 불변식 반전(task-03b 재설계)**:
+#    classify_l0l1 이 두 양성경로(A repo내 순수문서 / B repo-밖 안전영역)에서만 rc 0(L0), 그 외 전부 rc 1(L1).
+#    단 원본 .git 컴포넌트(GIT_COMPONENT=1)면 classify 결과를 무시하고 L1(#2).
+if [ "$GIT_COMPONENT" != "1" ] && classify_l0l1 "$CFILE"; then
+  exit 0   # L0 → 상태검증 없이 즉시 통과 (docs 등은 상태 손상과 무관)
+fi
+# 여기 도달 = L1 (GIT_COMPONENT=1 원본 .git 경로 포함)
+
+# ── L1 전용: reset-pending 인계 → 상태 확정(부재→시드·손상→격리) → 게이트 ──
+# task-mode-guard 의 리셋이 실패했으면 marker 가 남아 있다 — 여기서 리셋을 재시도하고, 실패 시 차단(fail-closed).
+if [ -e "$STATE.reset-pending" ]; then
+  RP_TP=$(head -1 "$STATE.reset-pending" 2>/dev/null || true)   # marker 내용 = 새 작업 폴더 (빈 값 허용 — 구 marker)
+  RP_ARGS=(MODE UNSET SPEC 0 PENDING_GATE 0)
+  [ -n "$RP_TP" ] && RP_ARGS+=(TASK_PATH "$RP_TP")              # TASK_PATH 도 인계(긴급 log.md 판정 정합 — I2)
+  # 2>/dev/null 금지(L3-03): state-lib 의 "보호 미보장" 경고까지 삼켜 원인이 사라진다.
+  if state_set "$STATE" "${RP_ARGS[@]}"; then
+    rm -f "$STATE.reset-pending" 2>/dev/null || true   # 인계 성공 — 아래 정상 게이트(UNSET→SPEC 질문)로
+  else
+    if [ "$EVENT" = "PreToolUse" ]; then
+      echo "[gate-guard] 새 작업 리셋 미완(reset-pending)${STATE_ENSURE_REASON:+ (원인: $STATE_ENSURE_REASON)} — 상태 갱신이 계속 실패해 안전 차단(fail-closed). .claude/lazymode/$SESSION_ID 권한·lock 을 확인하세요." >&2
+      exit 2
+    fi
+    echo "[gate-guard] 경고: reset-pending 인계 실패(PostToolUse)${STATE_ENSURE_REASON:+ (원인: $STATE_ENSURE_REASON)} — 상태 미갱신." >&2
+    exit 0
+  fi
+fi
+
+# rc 1 = 판정 불가(flock 획득 실패·재생성/격리 실패) → C2: Pre 차단, Post 경고+통과.
+if ! state_ensure_valid "$STATE"; then
+  if [ "$EVENT" = "PreToolUse" ]; then
+    echo "[gate-guard] 상태 검증 실패(flock 획득 불가 또는 재생성/격리 실패)${STATE_ENSURE_REASON:+ (원인: $STATE_ENSURE_REASON)} — 안전을 위해 차단(fail-closed). .claude/lazymode/$SESSION_ID 를 확인하세요. (C2: flock 실패=차단)" >&2
+    exit 2
+  fi
+  echo "[gate-guard] 경고: 상태 검증 실패${STATE_ENSURE_REASON:+ (원인: $STATE_ENSURE_REASON)} — 모드 게이트를 적용 못 했습니다(상태 미갱신). .claude/lazymode/$SESSION_ID 확인." >&2
+  exit 0
+fi
+
+MODE=$(state_get "$STATE" MODE)
+SPEC=$(state_get "$STATE" SPEC)
+PENDING=$(state_get "$STATE" PENDING_GATE)
+
+# 압축 뒤 작업 기록 미독 차단(v4.5 I5②) — 종전 차단 사유를 모두 통과한 PreToolUse·메인(agent_id 없음) L1 쓰기만.
+#   미독 = <sid>.compact 가 있고 TASK_PATH 의 대상(spec·log·있으면 decisions)을 그 뒤에 Read 하지 않음(state-lib).
+#   판정 불가(state_reread_unread rc 1)면 새 차단을 걸지 않는다(I7 — 종전 판정만). 통과면 return 0.
+reread_gate() {
+  local unread
+  [ "$EVENT" = "PreToolUse" ] || return 0
+  [ -z "$(echo "$HOOK_INPUT" | jq -r '.agent_id // empty' 2>/dev/null || true)" ] || return 0
+  unread=$(state_reread_unread "$(dirname -- "$STATE")" "$SESSION_ID" "$(state_get "$STATE" TASK_PATH)") || return 0
+  [ -n "$unread" ] || return 0
+  {
+    echo "[gate-guard] 압축 뒤 작업 기록 미독 — 다음 파일을 Read 한 뒤 다시 시도:"
+    printf '%s\n' "$unread" | sed 's/^/  /'
+    echo "(offset·limit 없이 파일 전체를 Read 해야 인정)"
+  } >&2
+  exit 2
+}
+
+# PENDING_GATE 세팅 (state-lib 원자 writer 경유 — flock+temp+mv). 실패 = fail-closed.
+set_pending() {
+  if ! state_set "$STATE" PENDING_GATE 1; then
+    echo "[gate-guard] 상태 갱신 실패(PENDING_GATE) — 게이트 빚을 세우지 못했습니다. 상태파일 권한을 확인하세요." >&2
+    return 1
+  fi
+}
+
+# 구현 주체 알림(implementation-by-workers task 03 — core §5): 메인이 L1 파일을 직접 쓰려 할 때 "구현은 워커에게"를
+#   **세션·작업 폴더(TASK_PATH)마다 한 번** 알린다. **막지 않는다** — 호출부는 이 함수 뒤에 그대로 exit 0 한다.
+#   부르는 자리 = auto 분기의 reread_gate 통과 뒤 하나뿐이다: 그 앞의 차단·ask·L0·PostToolUse·Bash 경로는 모두 이미
+#   종료했고 lazy 는 부르지 않는다. 여기서는 PreToolUse · 메인(agent_id 없음·빈 값·null — reread_gate 와 같은 기준) ·
+#   긴급 아님(DEBT≠1) 만 더 본다.
+#   왜 일반 echo 가 아니라 JSON 인가: 통과(exit 0)하면서 낸 일반 stdout·stderr 는 모델에게 보이지 않고
+#     hookSpecificOutput.additionalContext 만 보인다(11-21 실제 세션 실증 — 명세 §8 가정 2). 그래서 stdout 에는 이 JSON
+#     한 덩어리만 낸다. 정상 경로에서 stderr 에는 아무것도 더하지 않는다(기존 출력과 바이트까지 같게).
+#   왜 실패하면 조용히 통과하는가: 알림은 안내일 뿐이라 통과가 우선이다 — 알림 때문에 통과하던 쓰기가 막히거나 비정상
+#     종료하면 안 된다. 그래서 잠금·기록·JSON 생성이 실패하면 stdout 없이 돌아오고(실패를 드러내기 — core §4 — 위해
+#     stderr 한 줄만 남긴다. 통과 시 stderr 는 모델에게 안 보여 판정에 영향이 없다), 그 호출은 "한 번"을 소비하지 않는다.
+#     실패 방향(명세 실패 정책 11-22): 알림이 **빠지는 일은 없게**, 드물게 한 번 더 뜨는 것은 받아들인다 — 그래서 순서가
+#     준비(임시 파일) → 출력 → 확정(이름 바꾸기)이고 되돌리기 단계가 없다. 경고는 실패한 단계 낱말 하나로 구분한다.
+#   기억 = 상태 디렉토리의 사이드카 <sid>.worker-notice — 줄마다 이미 알린 TASK_PATH 값 하나(빈 줄 = "폴더 없음").
+#     세션 ID 가 이름에 있으니 다른 세션은 따로 센다. 상태파일(SCHEMA=4·set-state 키)은 건드리지 않는다.
+#     잠금 = <sidecar>.lock flock(-w 2 — 기존 사이드카 관례). 쓰기 = temp+mv(원자 — 부분 줄 잔재 없음).
+#     잠금 파일은 **없을 때만 배타 생성**(noclobber `>` — 없는 경로엔 O_EXCL 이라 심링크를 따라 바깥에 만들지 않는다)하고
+#     **읽기 전용으로 연다**(`9<` — flock 은 읽기 전용 fd 에도 걸린다. `>>` 로 열면 검사와 열기 사이에 심링크로 바뀐
+#     자리의 바깥 파일을 만들거나 바꾼다). 연 뒤 그 자리가 심링크·비정규이거나 연 fd 와 다른 파일이면 실패로 친다.
+#   이 함수는 `|| true` 문맥에서 불린다(set -e 무시) — 그래서 단계마다 실패를 명시 검사한다.
+worker_notice() {
+  local agent_id debt task_path state_dir notice_sidecar notice_json directory_rc
+  [ "$EVENT" = "PreToolUse" ] || return 0
+  agent_id=$(echo "$HOOK_INPUT" | jq -r '.agent_id // empty' 2>/dev/null) || return 0   # 판별 불가 → 내지 않음(워커일 수 있다)
+  [ -z "$agent_id" ] || return 0
+  debt=$(state_get "$STATE" DEBT)
+  [ "$debt" != "1" ] || return 0                     # 긴급 수정(DEBT=1) — 메인이 직접 하는 것이 정식 경로
+  task_path=$(state_get "$STATE" TASK_PATH)          # 줄 없음·빈 값 = 같은 "폴더 없음"
+  state_dir=$(dirname -- "$STATE")
+  notice_sidecar="$state_dir/$SESSION_ID.worker-notice"
+  # JSON 을 잠금 전에 만든다 — 생성이 실패하면 기록도 하지 않아 "한 번"이 남는다.
+  notice_json=$(jq -cn --arg context "[gate-guard] 구현(중간↑ stakes)은 Opus 워커에게 맡긴다 — 메인은 브리핑·회수·판정. 낮은 stakes·긴급 수정은 메인이 직접 해도 된다(core §5). 이 알림은 작업 폴더마다 한 번만 뜬다." \
+    '{hookSpecificOutput:{hookEventName:"PreToolUse",additionalContext:$context}}' 2>/dev/null) && [ -n "$notice_json" ] || {
+    ( trap '' PIPE; echo "[gate-guard] 경고: 구현 주체 알림 JSON 생성 실패 — 알림 생략(통과)." >&2 ) || true; return 0; }
+  # 상태 디렉토리 보호(심링크·gitignore) 재확인 — rc 1·2 면 쓰지 않는다. rc 3(환경 실패)은 상태 writer 와 같이 진행.
+  directory_rc=0; state_ensure_dir "$state_dir" || directory_rc=$?
+  case "$directory_rc" in
+    0|3) ;;
+    *) ( trap '' PIPE; echo "[gate-guard] 경고: 구현 주체 알림 생략 — 상태 디렉토리 확보 실패 (원인: ${STATE_ENSURE_REASON:-unknown})." >&2 ) || true
+       return 0 ;;
+  esac
+  # "이미 냈나 확인 → 준비 → 출력 → 확정"을 한 잠금 안에서(동시 호출 중 하나만 낸다). 서브셸 rc:
+  #   0 = 이번에 냄 · 10 = 이미 냈음 · 1 = 잠금 실패 · 2 = 준비 실패 · 3 = 출력 실패 · 4 = 확정 실패.
+  #   ① 준비: 임시 파일 = 기존 사이드카 + 이번 TASK_PATH 한 줄(사이드카는 아직 그대로).
+  #   ② 출력: 알림 JSON. ①·② 가 실패하면 ③ 을 하지 않는다 — 임시 파일만 지우고 사이드카는 바이트까지 그대로라
+  #      "한 번"을 소비하지 않는다(되돌릴 것이 없으니 되돌리기 실패도 없다).
+  #   ③ 확정: mv 로 임시 파일을 사이드카로. 이것만 실패하면 알림은 이미 나갔고 기록이 없어 다음 호출에서 한 번 더 뜬다
+  #      (빠지는 것보다 한 번 더가 낫다 — 명세). 확정을 출력 뒤에 두는 이유가 이것이다.
+  #   확정까지 잠금 안이라 동시 호출은 확정된 기록을 보고 "이미 냄"으로 끝난다.
+  #   서브셸 stderr 는 통째로 버린다(printf 자체의 "쓰기 오류" 줄 등) — 경고는 아래에서 rc 로 한 줄만 낸다.
+  local record_rc=0 notice_lock="$notice_sidecar.lock"
+  (
+    # 닫힌 파이프로 출력해도 SIGPIPE 로 죽지 않고 printf 가 실패를 돌려주게 — 이 잠금 서브셸 안에만(훅의 다른 부분과 무관).
+    trap '' PIPE
+    if [ ! -e "$notice_lock" ] && [ ! -L "$notice_lock" ]; then
+      ( set -C; : > "$notice_lock" ) 2>/dev/null || true   # 경합으로 다른 호출이 먼저 만들었으면 그것을 쓴다
+    fi
+    { [ -f "$notice_lock" ] && [ ! -L "$notice_lock" ]; } || exit 1   # 심링크·비정규 — 열지 않는다(FIFO 막힘도 피함)
+    exec 9<"$notice_lock" || exit 1
+    { [ -f "$notice_lock" ] && [ ! -L "$notice_lock" ]; } || exit 1   # 검사와 열기 사이에 바뀐 자리
+    if [ -e /proc/self/fd/9 ]; then [ "$notice_lock" -ef /proc/self/fd/9 ] || exit 1; fi   # 연 fd = 그 자리의 파일
+    flock -x -w 2 9 || exit 1
+    # 확인 — 사이드카를 읽지 못하는 실패(심링크·디렉토리·FIFO·읽기 불가)는 준비 실패로 묶는다.
+    if [ -e "$notice_sidecar" ] || [ -L "$notice_sidecar" ]; then
+      { [ -f "$notice_sidecar" ] && [ ! -L "$notice_sidecar" ]; } || exit 2   # 심링크·비정규 — 그 너머로 읽거나 쓰지 않는다
+      grep -qxF -- "$task_path" "$notice_sidecar"; seen_rc=$?
+      [ "$seen_rc" = 0 ] && exit 10
+      [ "$seen_rc" = 1 ] || exit 2                    # rc 2 = 읽기 실패("없음"으로 보지 않는다)
+    fi
+    # ① 준비
+    temporary_file=$(mktemp "$state_dir/.worker-notice.XXXXXX") || exit 2
+    if [ -e "$notice_sidecar" ]; then
+      cat -- "$notice_sidecar" > "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }
+      # 끝 개행이 없으면 먼저 보탠다 — 이번 줄이 기존 마지막 줄에 붙어 두 기록이 함께 깨지지 않게(줄 경계 보존).
+      if [ -s "$notice_sidecar" ]; then
+        last_byte=$(tail -c 1 -- "$notice_sidecar") || { rm -f -- "$temporary_file"; exit 2; }
+        if [ -n "$last_byte" ]; then printf '\n' >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }; fi
+      fi
+    fi
+    printf '%s\n' "$task_path" >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }
+    # ② 출력
+    printf '%s\n' "$notice_json" || { rm -f -- "$temporary_file"; exit 3; }
+    # ③ 확정
+    mv -fT -- "$temporary_file" "$notice_sidecar" || { rm -f -- "$temporary_file"; exit 4; }
+  ) 2>/dev/null || record_rc=$?
+  # 경고 출력만 SIGPIPE 를 견딘다 — stdout·stderr 가 함께 끊긴 파이프면 경고를 쓰다 죽어(exit 141) 통과가 깨진다.
+  #   이 서브셸 안에만 trap 을 건다(함수·훅 전체로 번지지 않게). 경고를 2>/dev/null 로 버리지는 않는다 —
+  #   stderr 가 살아 있는 정상 실패 경로의 경고 한 줄은 그대로 나가야 한다.
+  (
+    trap '' PIPE
+    case "$record_rc" in
+      0|10) ;;
+      1) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 잠금 실패($notice_lock). 다음 쓰기에서 다시 시도(통과)." >&2 ;;
+      2) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 준비 실패(사이드카 $notice_sidecar 읽기 또는 임시 파일). 기록은 그대로(통과)." >&2 ;;
+      3) echo "[gate-guard] 경고: 구현 주체 알림 생략 — 출력 실패(stdout). 기록은 그대로라 다음 쓰기에서 다시 뜬다(통과)." >&2 ;;
+      4) echo "[gate-guard] 경고: 구현 주체 알림은 나갔으나 확정 실패($notice_sidecar 이름 바꾸기) — 다음 쓰기에서 한 번 더 뜬다(통과)." >&2 ;;
+      *) echo "[gate-guard] 경고: 구현 주체 알림 — 예상 밖 실패(rc $record_rc). 기록 여부 불명(통과)." >&2 ;;
+    esac
+  ) || true
+  return 0
+}
+
+# 1) 명세 미합의(SPEC≠1) → L1 차단. 인터뷰→명세서 합의가 유일한 진입 게이트(core v4 §1).
+if [ "$SPEC" != "1" ]; then
+  if [ "$EVENT" = "PreToolUse" ]; then
+    cat >&2 <<MSG
+[gate-guard] 요구사항 명세 미합의(SPEC=0) — L1(실행물 변경) 진입 차단.
+복구 순서: ① 새 작업 폴더에 log.md 생성(Write 도구로) → 전수 인터뷰 → requirement-spec.md 작성(필수 6칸 — 빈 칸 금지, templates/requirement-spec.md)
+  → ② 사용자 합의 답변을 받으면: bash ~/.claude/hooks/set-state.sh spec-approved .claude/lazymode/$SESSION_ID
+  → ③ 자율성 2택(auto/lazy)을 물어 기록 → ④ 이 도구 호출 재시도.
+긴급 수정(장애 대응)은 유일 예외: 새 작업 폴더에 log.md 생성 → 사용자 긴급 확인(+불가역 데이터 턱) →
+  bash ~/.claude/hooks/set-state.sh emergency .claude/lazymode/$SESSION_ID  (MODE=auto·SPEC=1·DEBT=1 — 스모크 즉시, 생략분은 log.md '생략한 검증'에)
+MSG
+    exit 2
+  fi
+  exit 0
+fi
+
+# 2) 자율성 미선택(MODE=UNSET) → 차단 + 2택 질문.
+if [ "$MODE" = "UNSET" ] || [ -z "$MODE" ]; then
+  if [ "$EVENT" = "PreToolUse" ]; then
+    cat >&2 <<MSG
+[gate-guard] 자율성 미선택(MODE=UNSET). 사용자에게 2택을 물어(AskUserQuestion 권장) 아래 명령으로 기록 후 재시도:
+      bash ~/.claude/hooks/set-state.sh mode <auto|lazy> .claude/lazymode/$SESSION_ID
+  • auto — 명세 합의 후 Claude 자율 실행 (기본 권장 — 검증·리뷰는 stakes 비례).
+  • lazy — 매 diff 사용자 이해 게이트(주관식→판정 워커) — 학습·OSS 기여용. (implementation-lazymode.md)
+MSG
+    exit 2
+  fi
+  exit 0
+fi
+
+# 3) auto → 구현 게이트 없음 (명세 합의 후 자율 실행 — 검증·리뷰는 stakes 비례)
+if [ "$MODE" = "auto" ]; then
+  reread_gate
+  worker_notice || true   # 차단 판정이 모두 끝난 뒤(통과 확정)에만 — 알림은 판정을 바꾸지 않는다
+  exit 0
+fi
+
+# 4) lazy → per-diff 게이트 (docs/plans는 위에서 이미 면제)
+if [ "$MODE" = "lazy" ]; then
+  if [ "$EVENT" = "PostToolUse" ]; then
+    if ! set_pending; then exit 2; fi   # 갱신 실패 = fail-closed (은폐 금지)
+    echo "[gate-guard] diff 발생 → 이해 게이트 대기(PENDING_GATE=1). before/after 스니펫을 작업 문서에 기록하고, 사용자에게 이 변경을 주관식으로 설명받아 판정 워커로 검증한 뒤 'bash ~/.claude/hooks/set-state.sh gate-pass' 로 내리세요. (implementation-lazymode.md §3·§4)" >&2
+    exit 0
+  fi
+  if [ "$EVENT" = "PreToolUse" ]; then
+    if [ "$PENDING" = "1" ]; then
+      echo "[gate-guard] 직전 diff의 이해 게이트가 미처리(PENDING_GATE=1)입니다. 먼저 (1) before/after 스니펫 기록 → (2) 사용자 주관식 설명 → (3) 판정 워커 verdict=pass 를 거치고, 통과하면 'bash ~/.claude/hooks/set-state.sh gate-pass .claude/lazymode/$SESSION_ID' 로 내린 뒤 다시 시도하세요. (implementation-lazymode.md §1·§4)" >&2
+      exit 2
+    fi
+    reread_gate
+    exit 0
+  fi
+fi
+
+# 여기 도달 = 예상 밖 MODE. state_ensure_valid가 enum 밖을 이미 UNSET로 격리하므로 정상 경로에선 불가하나,
+# 방어적으로 fail-closed(게이트를 조용히 끄지 않는다).
+if [ "$EVENT" = "PreToolUse" ]; then
+  echo "[gate-guard] 예상 밖 MODE='$MODE' (.claude/lazymode/$SESSION_ID 확인). auto | lazy 중 하나를 set-state.sh 로 기록한 뒤 다시 시도하세요." >&2
+  exit 2
+fi
+echo "[gate-guard] 경고: 예상 밖 MODE='$MODE' — 게이트를 적용 못 했습니다(PostToolUse). 상태파일을 확인하세요." >&2
+exit 0
