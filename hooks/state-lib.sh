@@ -493,6 +493,47 @@ state_reqcheck_paths() { # <state_dir> <sid> <task_path> → rc 0 / 1
   [ -z "$out" ] || printf '%s\n' "$out"
 }
 
+# 위 사이드카에 쓰는 쪽(task-mode-guard — 메인이 Write 로 쓴 작업 폴더) — 이름 · 줄의 꼴(절대 경로 폴더 한 줄)을 읽는 쪽과 여기서 맞춘다.
+#   이미 있는 줄(글자 그대로)이면 무변경. 잠금 · 임시 파일 → mv · 심링크 · 비정규 거부 = gate-guard worker_notice 사이드카 관례
+#   (잠금 파일은 없을 때만 배타 생성 · 읽기 전용으로 연다). 끝 개행 없는 기존 파일에는 개행을 먼저 보탠다(두 줄이 붙지 않게).
+#   rc 0 = 더함 또는 이미 있음 · 1 = 잠금 실패 · 2 = 사이드카 판정 불가(심링크 · 비정규 · 읽기 불가) 또는 준비 실패 · 3 = 확정(mv) 실패
+#      · 4 = 줄이 될 수 없는 폴더(빈 값 · 상대 경로 · 개행 포함) 또는 빈 sid · 5 = 상태 디렉토리 확보 실패(STATE_ENSURE_REASON).
+#   출력 없음(경고는 호출부). `||` 문맥에서 불린다(set -e 무시) — 단계마다 실패를 명시 검사한다.
+state_reqcheck_remember() { # <state_dir> <sid> <작업 폴더> → rc 0~5
+  local dir="${1:-}" sid="${2:-}" folder="${3:-}" sidecar directory_rc=0
+  case "$folder" in /*) ;; *) return 4 ;; esac
+  case "$folder" in *$'\n'*) return 4 ;; esac
+  [ -n "$sid" ] || return 4
+  sidecar="$dir/$sid.req-check-paths"
+  state_ensure_dir "$dir" || directory_rc=$?
+  case "$directory_rc" in 0|3) ;; *) return 5 ;; esac
+  (
+    lock="$sidecar.lock"
+    if [ ! -e "$lock" ] && [ ! -L "$lock" ]; then ( set -C; : > "$lock" ) 2>/dev/null || true; fi
+    { [ -f "$lock" ] && [ ! -L "$lock" ]; } || exit 1
+    exec 9<"$lock" || exit 1
+    { [ -f "$lock" ] && [ ! -L "$lock" ]; } || exit 1
+    if [ -e /proc/self/fd/9 ]; then [ "$lock" -ef /proc/self/fd/9 ] || exit 1; fi
+    flock -x -w 2 9 || exit 1
+    if [ -e "$sidecar" ] || [ -L "$sidecar" ]; then
+      { [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]; } || exit 2   # 그 너머로 읽거나 쓰지 않는다
+      seen_rc=0; grep -qxF -- "$folder" "$sidecar" || seen_rc=$?
+      [ "$seen_rc" = 0 ] && exit 0
+      [ "$seen_rc" = 1 ] || exit 2                    # rc 2 = 읽기 실패("없음"으로 보지 않는다)
+    fi
+    temporary_file=$(mktemp "$dir/.req-check-paths.XXXXXX") || exit 2
+    if [ -e "$sidecar" ]; then
+      cat -- "$sidecar" > "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }
+      if [ -s "$sidecar" ]; then
+        last_byte=$(tail -c 1 -- "$sidecar") || { rm -f -- "$temporary_file"; exit 2; }
+        if [ -n "$last_byte" ]; then printf '\n' >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }; fi
+      fi
+    fi
+    printf '%s\n' "$folder" >> "$temporary_file" || { rm -f -- "$temporary_file"; exit 2; }
+    mv -fT -- "$temporary_file" "$sidecar" || { rm -f -- "$temporary_file"; exit 3; }
+  ) 2>/dev/null
+}
+
 # 요구 대조의 찾은 것 — gate-guard(차단) · reinject-mode(알림)가 함께 쓴다. 읽을 log 마다 파서를 **한 번만** 부른다
 #   (매 L1 쓰기 · 매 턴 도는 길 — 폴더가 여럿이고 log 가 커도 파일을 두 번 읽지 않는다).
 #   stdout(늘 rc 0 — 판정 불가도 줄로 낸다): 탭으로 가른 줄. 찾은 것이 없으면(표지 없음 · 위반도 열린 빈 칸도 없음) 출력 없음.
