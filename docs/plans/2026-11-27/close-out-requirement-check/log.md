@@ -76,6 +76,12 @@
 | 11-28 03:11 | t05 루프 1: Opus(실행 · 103k) ∥ codex — **둘 다 지적 없음** | **task 05 닫음**(사본 기준). 후보 하나(t05-1 테스트 공백). 게이트(상태파일 읽기)가 열려 있지 않으면 patch 둘(`t05-tests.patch` · `t05-impl.patch`)을 남기고 task 06 으로 |
 | 11-28 03:13 | task 06(낮음 — 메인이 직접 · 사본에서): README 구조 절 훅 줄 셋(gate-guard · task-mode-guard · reinject) · 새 절 "요구 대조 (v4.10)"(무엇을 하나 · 푸는 길 · 못 보는 것 아홉 · 근거) · README 이력 v4.10 · HISTORY 한 줄 · 명세 ② 의 테스트 이름 표를 실제 영문 이름으로(작업 트리 docs — L0) | 셀프체크: README 의 사실(표지 둘 이상 · 긴급은 알림 · 사이드카는 사용자가 고침 · 끄는 길 없음)을 훅 코드와 대조 · 표의 이름 넷을 grep 으로 확인. patch = `harness-t05/t06-docs.patch` · 05 와 06 을 합친 patch = `harness-t05/t05-t06-all.patch`(파일 8). **게이트 닫힘(상태파일 SPEC=0 · MODE=UNSET · TASK_PATH=study-note) — 작업 트리 적용 · 커밋은 열린 뒤**. core 15,370자 · task-units 80줄 |
 | 11-28 12:01 | (메인 전달) 게이트 열림 — 사용자가 set-state 를 직접 실행(상태파일 읽기: SPEC=1 · MODE=auto · DEBT=0) | patch 셋을 작업 트리에 차례로 적용(`patch -p1` — dry-run 먼저) → 커밋 test `3fa929b` · fix `07c8ea6` · docs `4dabf83` · 적용한 파일이 사본과 `cmp` 로 같음. **메인 재실행(깨끗한 작업 트리 `4dabf83`) 569 통과 · 0 실패 · 0 건너뜀**. task 05 · 06 닫음 |
+| 11-28 17:19 | (메인 전달) 사용자 "하네스 배포여부도 확인해서 해당 작업 마무리하면 될 꺼 같아." → task 07 | 확인: 작업 트리 깨끗 · 끝 `3564bb4` · `git fetch` 뒤 `origin/main` = `7688bad` 그대로(조상) · 범위 대조 = 파일 25(src/core.md · playbooks 둘 · templates 둘 · hooks 넷 · hooks/tests 의 케이스 셋 · fixtures 다섯 · lock · README · HISTORY · docs/plans 다섯 — 이 작업의 범위와 같음) · push-scan: 걸린 것 2 · 확인 필요 1 = 개인 경로 `~/...` 2곳(incident.md · requirement-spec.md — 프로젝트 폴더 경로 · 비밀값 아님 · 같은 저장소의 기존 docs/plans 에 같은 꼴 95줄 — 저장소는 PUBLIC) |
+| 11-28 17:19 | push → PR #17(base main · 앞선 PR 꼴의 제목 · 본문 — 작성 도구 표기 없음) → 병합(앞선 PR 과 같은 병합 커밋 꼴) | 병합 커밋 **`4bab9dd`**. 검사(checks) 없음 |
+| 11-28 17:19 | 배포: 저장소 본 폴더는 다른 세션의 가지(`docs/communication-decisions` · 커밋 안 된 변경 있음)라 main 으로 바꾸지 않고, 깨끗한 작업 트리(`wt/harness-base` 를 `origin/main` `4bab9dd` 로 detached)에서 `bash hooks/deploy.sh --dry-run` | manifest diff = core.md · HISTORY.md · hooks 넷(gate-guard · reinject-mode · state-lib · task-mode-guard) · hooks/tests(케이스 셋 · fixtures 둘 · lock) · playbooks 둘(task-units · writing/work-records) · templates 둘 — 이 작업의 변경과 같고 DEST 에만 있는 파일 없음 |
+| 11-28 17:19 | 실배포 `bash hooks/deploy.sh` | **권한 거부**(Claude Code auto mode 의 분류기 — "Destructive or Unwanted Actions"). 우회하지 않고 멈춤 — 배포 · smoke 는 사용자가 허락하거나 직접 실행해야 한다. 배포본 `~/.claude` 는 바뀌지 않았다 |
+| 11-28 17:2x | 사용자가 `bash hooks/deploy.sh` 를 직접 실행(깨끗한 작업 트리 `wt/harness-base` · `4bab9dd`) — 시각은 메인이 결과를 읽은 때의 어림이 아니라 "17:19 의 거부와 17:33 의 확인 사이"라는 것만 안다 | `[deploy] smoke 검증 통과` · `배포 완료 (diff 0 검증)` · 백업 `~/.claude/.deploy-backup-3670749` · 메인이 배포본 `core.md` 와 main 의 `src/core.md` 를 `diff -q` 로 대조(같음) · 돌고 있던 메인 세션의 상태파일 그대로(SPEC=1 · MODE=auto · TASK_PATH 같음 — 그 뒤 그 세션의 docs 쓰기 · 커밋이 종전처럼 통과) |
+| 11-28 17:50 | 배포 뒤 확인(메인 — 하네스 워커는 구독 주간 한도로 멈춤): ① 배포본 자리에서 `bash ~/.claude/hooks/tests/run.sh` ② 임시 폴더의 빈 저장소에서 새 세션(`claude -p` · haiku · API 과금)으로 `src/b.txt` 쓰기와 `docs/note.md` 쓰기 | ① 569 passed · 0 failed · 0 skipped(req-check 케이스 셋 포함) ② `src/b.txt` = `[gate-guard] 요구사항 명세 미합의(SPEC=0) — L1(실행물 변경) 진입 차단.` 으로 막힘(파일 없음) · `docs/note.md` = 통과 · 상태파일 생성(SCHEMA=4 · MODE=UNSET · SPEC=0) · 훅 오류 없음. **하지 않은 것**: 실제 세션에서 서브에이전트의 PostToolUse(Write) 입력에 agent_id 가 실리는지 · 표지가 있는 log 의 `닫음` + 빈 칸이 실제 세션에서 막고 알리는지(둘 다 테스트 묶음의 케이스로만 확인 — NEXT N15 로 넘김) |
 
 ## 진행 중 결정 (합의 뒤 기록하고 진행한 것 — 마감 때 사용자 확인, `playbooks/task-units.md` §4)
 
@@ -111,7 +117,7 @@
 | T04 | 명세 9절 task 04 · 6.1 ② | 사이드카 읽기 · gate-guard 차단 · reinject 알림과 테스트 | `6e6b70c` · `38c2d23` · `1257b33` | 닫음 |
 | T05 | 명세 9절 task 05 · 진행 중 결정(사이드카 쓰기 이동) | task-mode-guard 가 워커의 Write 로 리셋하지 않음 · 사이드카 쓰기와 테스트 | `3fa929b` · `07c8ea6` | 닫음 |
 | T06 | 명세 9절 task 06 | README 의 훅 설명 · HISTORY · 버전 줄 · 명세 ② 의 테스트 이름 | `4dabf83` · `04e86b3` | 닫음 |
-| T07 | 명세 9절 task 07 | deploy.sh 로 배포 · 새 세션 smoke | | 열림 |
+| T07 | 명세 9절 task 07 | deploy.sh 로 배포 · 새 세션 smoke | PR #17 병합 `4bab9dd` · 배포(사용자 실행 — 타임라인 11-28 17:2x) · smoke(타임라인 11-28 17:50) | 닫음 |
 
 
 ## 고장 내기
@@ -219,3 +225,9 @@
 - 더 나은 대안: 없음.
 - 이번 변경의 `단순화:` 주석: 없음(펜스 글자 수의 `단순화:` 는 펜스 코드와 함께 지워짐).
 - NEXT 로 옮긴 것: `docs/plans/NEXT.md` N15.
+
+## 완료 요약 (배포 차례 — 11-28 17:50)
+
+- 한 것: PR #17 병합(`4bab9dd`) → 사용자가 `deploy.sh` 실행 → 배포본 = main(diff 0) → 배포본의 테스트 569 통과 · 새 세션의 게이트 동작 확인. T07 닫음.
+- 확인하지 않은 것: 실제 세션에서의 agent_id(서브에이전트의 Write) · 실제 세션에서의 `닫음` + 빈 칸 차단과 알림 — NEXT N15.
+- 배운 것: 실배포 명령은 auto mode 의 분류기가 거부한다(자기 규칙 파일의 교체) — 배포는 사용자가 `!` 로 실행하는 것이 정상 경로다. 저장소 본 폴더가 다른 가지에 있으면 `origin/main` 의 detached 작업 트리에서 `deploy.sh` 를 돌린다.
